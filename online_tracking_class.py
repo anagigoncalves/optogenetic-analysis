@@ -591,9 +591,10 @@ class otrack_class:
                 offtracks_st_posy.extend(final_tracks[1, p, np.int64(st_strides_mat_paw_crop)]) #paw y position for stance onset
                 offtracks_sw_posy.extend(final_tracks[1, p, np.int64(sw_pts_mat_paw_crop)]) #paw y position for swing onset
         #create dataframe
-        if len(offtracks_st_time) < len(offtracks_st_frames) or len(offtracks_st_off_time)< len(offtracks_st_frames):
+        if len(offtracks_st_time) < len(offtracks_st_frames) or len(offtracks_st_off_time)< len(offtracks_st_frames) or len(offtracks_st_off_frames)< len(offtracks_st_frames):
             offtracks_st_time.extend(np.zeros(len(offtracks_st_frames)-len(offtracks_st_time)))
             offtracks_st_off_time.extend(np.zeros(len(offtracks_st_frames)-len(offtracks_st_off_time)))
+            offtracks_st_off_frames.extend(np.zeros(len(offtracks_st_frames)-len(offtracks_st_off_frames)))
         offtracks_st = pd.DataFrame(
             {'time': offtracks_st_time, 'time_off': offtracks_st_off_time, 'frames': offtracks_st_frames, 'frames_off': offtracks_st_off_frames,
              'trial': offtracks_st_trials,
