@@ -2,7 +2,8 @@ import os
 import numpy as np
 
 paw_otrack = 'FR'
-path = path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments\\Tied belt sessions\\20240126 tied stance stim\\'
+path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim\\'
+path = 'C:\\Users\\Utilizador\Carey Lab Dropbox\\Alice Geminiani\\LocoCF-internal\\Tests setup\\26052023 HR test\\25percent\\'
 main_dir = path.split('\\')[:-2]
 session = 1
 plot_data = 0
@@ -44,7 +45,7 @@ for count_a, animal in enumerate(animals):
 
     # PROCESS SYNCHRONIZER LASER SIGNALS
     #if 'ChR2'
-    laser_on = otrack_class.get_laser_on_some_trials(animal, laser_trial_signal_session, timestamps_session, np.arange(9, 19))
+    #laser_on = otrack_class.get_laser_on_some_trials(animal, laser_trial_signal_session, timestamps_session, np.arange(9, 19))
     #if JAWS
     #laser_on = otrack_class.get_laser_on(animal, laser_signal_session, timestamps_session)
 

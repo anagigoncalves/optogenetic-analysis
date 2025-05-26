@@ -1,11 +1,74 @@
+"""
+Created on Wed Feb 12 09:16:35 2025
+
+@author: Alice Geminiani
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import math
 import os
+import scipy.stats as st
 
 # Plotting functions
 # Locomotor adaptation
 # Baselines
+
+
+# STANCE PHASE
+def plot_phase(phase_data, animals, paw_colors, intervals=None):
+    ntrial = np.shape(phase_data)[2]
+    # plot stance phase - polar - group mean
+    #error bars in polar plot don't rotate well
+    fig_group_mean = plt.figure(figsize=(10, 10), tight_layout=True)
+    ax = fig_group_mean.add_subplot(111, projection='polar')
+    for paw in range(3):
+        data_mean = st.circmean(phase_data[paw, :, :], axis=0)
+        ax.scatter(data_mean, np.arange(1, ntrial + 1), c=paw_colors[paw], s=30)
+    ax.set_yticks([8.5, 16.5])
+    ax.set_yticklabels(['', ''])
+    ax.tick_params(axis='both', which='major', labelsize=20)
+
+    # plot stance phase - polar - individual animals, for each paw
+
+
+
+    # plot stance phase - linear - individual animals
+    num_animals=np.shape(phase_data)[1]
+    fig_ind_animals, ax = plt.subplots(2, int(np.ceil(num_animals/2)), figsize=(20, 20), tight_layout=True, sharey=True, sharex=True)
+    ax = ax.ravel()
+    for count_a in range(np.shape(phase_data)[1]):
+        for p in range(4):
+            if intervals:
+                if 'split' in intervals.keys():
+                    add_patch_interval(ax[count_a], intervals['split'], set_fc='lightgray')
+                if 'stim' in intervals.keys():
+                    add_patch_interval(ax[count_a], intervals['split'], set_fc='lightblue')
+                    add_start_end_interval(ax[count_a], intervals['stim'])
+            ax[count_a].plot(np.arange(1, ntrial+1), np.rad2deg(phase_data[p, count_a, :]), color=paw_colors[p], linewidth=2)
+            ax[count_a].spines['right'].set_visible(False)
+            ax[count_a].spines['top'].set_visible(False)
+            ax[count_a].tick_params(axis='x')
+           # ax[count_a].set_ylim([70, 230])
+            ax[count_a].tick_params(axis='y')
+            ax[count_a].set_title(animals[count_a])
+
+    # plot stance phase - linear - group mean
+    fig_group_mean_linear, ax_group_mean_linear = plt.subplots(figsize=(10, 10), tight_layout=True)
+    for paw in range(3):
+        # # Convert data to % and remove discontinuities
+        phase_data_perc = (phase_data/(2*np.pi))*100
+        #phase_data_perc[phase_data_perc < -30] += 100
+        #phase_data_perc[phase_data_perc > 86.111] -= 100
+        data_mean = st.circmean(phase_data_perc[paw, :, :], axis=0)
+        ax_group_mean_linear.plot(np.arange(1, ntrial + 1), data_mean, color=paw_colors[paw], linewidth=2)
+        #ax_group_mean_linear.fill_between(np.linspace(1, ntrial, ntrial), 
+        #            st.circmean(phase_data_perc[paw, :, :], axis=0)+np.nanstd(phase_data_perc[paw, :, :], axis=0)/np.sqrt(len(animals)), 
+        #            st.circmean(phase_data_perc[paw, :, :], axis=0)-np.nanstd(phase_data_perc[paw, :, :], axis=0)/np.sqrt(len(animals)), 
+        #            facecolor=paw_colors[paw], alpha=0.5)
+
+    return fig_group_mean, fig_ind_animals, fig_group_mean_linear
+
 
 # STANCE SPEED
 def plot_stance_speed(data, animal, paw_colors, intervals=None):
@@ -15,10 +78,11 @@ def plot_stance_speed(data, animal, paw_colors, intervals=None):
         ax.plot(np.linspace(1,len(data[p,:]),len(data[p,:])), data[p,:], color = paw_colors[p], linewidth = 2)
     # Add split and stimulation intervals
     if intervals:
-        if 'split' in intervals:
+        if 'split' in intervals.keys():
             add_patch_interval(ax, intervals['split'], set_fc='lightgray')
-        if 'stim' in intervals:
-            add_start_end_interval(ax, intervals['stim'], set_fc='lightblue')
+        if 'stim' in intervals.keys():
+            add_patch_interval(ax, intervals['split'], set_fc='lightblue')
+            add_start_end_interval(ax, intervals['stim'])
 
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
@@ -54,10 +118,11 @@ def plot_learning_curve_ind_animals(param_sym, current_param, labels_dic, animal
          
     # Add split and stimulation intervals
     if intervals:
-        if 'split' in intervals:
+        if 'split' in intervals.keys():
             add_patch_interval(ax, intervals['split'], set_fc='lightgray')
-        if 'stim' in intervals:
-            add_start_end_interval(ax, intervals['stim'], set_fc='lightblue')
+        if 'stim' in intervals.keys():
+            add_patch_interval(ax, intervals['split'], set_fc='lightblue')
+            add_start_end_interval(ax, intervals['stim'])
 
     # Plot learning curves for each animal
     for a in range(np.shape(param_sym)[1]):  # Loop on all animals
@@ -93,10 +158,11 @@ def plot_learning_curve_ind_animals_avg(param_sym_avg, current_param, labels_dic
 
     # Add split and stimulation intervals
     if intervals:
-        if 'split' in intervals:
+        if 'split' in intervals.keys():
             add_patch_interval(ax, intervals['split'], set_fc='lightgray')
-        if 'stim' in intervals:
-            add_start_end_interval(ax, intervals['stim'], set_fc='lightblue')
+        if 'stim' in intervals.keys():
+            add_patch_interval(ax, intervals['split'], set_fc='lightblue')
+            add_start_end_interval(ax, intervals['stim'])
 
 
     # Plot learning curves for each animal
@@ -169,10 +235,11 @@ def plot_learning_curve_avg_compared(param_sym_multi, current_param, labels_dic,
 
     # Add split and stimulation intervals
     if intervals:
-        if 'split' in intervals:
+        if 'split' in intervals.keys():
             add_patch_interval(ax_multi, intervals['split'], set_fc='lightgray')
-        if 'stim' in intervals:
-            add_start_end_interval(ax_multi, intervals['stim'], set_fc='lightblue')
+        if 'stim' in intervals.keys():
+            add_patch_interval(ax_multi, intervals['split'], set_fc='lightblue')
+            add_start_end_interval(ax_multi, intervals['stim'])
     
     for path in paths:
         ntrial = len(param_sym_multi[path][current_param][0,:])
@@ -198,7 +265,7 @@ def plot_learning_curve_avg_compared(param_sym_multi, current_param, labels_dic,
     return fig_multi
 
 
-# Learning parameters (only comparing multiple experiments?)
+# LEARNING PARAMETERS
 # barplot of all learning parameters with average and SEM + scatterplot of ind animals in the middle (optional)
 def plot_all_learning_params(learning_params, current_param_sym, included_animals_list, experiment_names, experiment_colors, animal_colors_dict, stat_learning_params=None, scatter_single_animals=False, ranges=[False, None]):
     """
@@ -439,7 +506,6 @@ def add_start_end_interval(ax, intervals):
     ax.axvline(x=start+duration-0.5, color='k', linestyle='-', linewidth=0.5)
 
 
-# TODO: Add functions to set plot parameters
 def set_symmetry_plot(ax, param_name):
     # Add horizontal line at 0
     ax.axhline(y=0, color='grey', linestyle='--')

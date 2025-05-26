@@ -17,7 +17,7 @@ if laser_event == 'swing':
 
 window_time = 0.05
 trials_plot = np.arange(9, 19) #trials with stimulation to check phase of laser
-path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments\\Tied belt sessions\\20240409 tied stance stim CTXchr2\\'
+path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th200st IO 50ms\\'
 import online_tracking_class
 otrack_class = online_tracking_class.otrack_class(path)
 import locomotion_class
@@ -40,6 +40,7 @@ light_offset_phase_animals_hist = []
 light_onset_time_animals_hist = []
 light_offset_time_animals_hist = []
 for count_a, animal in enumerate(animal_list):
+    print(animal)
     trials = otrack_class.get_trials(animal)
     # LOAD PROCESSED DATA
     [otracks, otracks_st, otracks_sw, offtracks_st, offtracks_sw, timestamps_session, laser_on] = otrack_class.load_processed_files(animal)
@@ -78,15 +79,31 @@ for count_a, animal in enumerate(animal_list):
     # ax.set_ylabel('Accuracy', fontsize=14)
     # plt.savefig(path_save + animal + '_laser_performance_accuracy.png')
 
+    fig, ax = plt.subplots(tight_layout=True, figsize=(10, 7))
+    ax.plot(trials_plot, tp_laser+tn_laser, marker='o', color='black', linewidth=2)
+    ax.set_ylim([0, 1])
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.set_title(animal, fontsize=16)
+    ax.set_ylabel('Accuracy', fontsize=14)
+    ax.set_ylabel('Accuracy', fontsize=14)
+    plt.savefig(path_save + animal + '_'+laser_event +'_laser_performance_accuracy.png')
+
     #LASER ONSET AND OFFSET PHASE
     light_onset_phase_all = []
     light_offset_phase_all = []
+    predicted_cspk_phase_all = []
     stim_nr_trials = np.zeros(len(trials_plot))
     stride_nr_trials = np.zeros(len(trials_plot))
     for count_t, trial in enumerate(trials_plot):
         [light_onset_phase, light_offset_phase, stim_nr, stride_nr] = \
             otrack_class.laser_presentation_phase_all(trial, trials, laser_event, offtracks_st, offtracks_sw, laser_on,
                                                   timestamps_session, final_tracks_phase, "FR")
+        [light_onset_phase, predicted_cspk_phase, stim_nr, stride_nr] = \
+            otrack_class.predicted_cspk_phase_all(trial, trials, laser_event, offtracks_st, offtracks_sw, laser_on,
+                                                  timestamps_session, final_tracks_phase, "FR", cspk_mu=0.04, cspk_std=0.024)
         stim_nr_trials[count_t] = stim_nr
         stride_nr_trials[count_t] = stride_nr
         light_onset_phase_all.extend(light_onset_phase)

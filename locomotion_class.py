@@ -32,12 +32,13 @@ import nptdms as tdms
 
 class loco_class:
     
-    def __init__(self,path):
+    def __init__(self,path, pixel_to_mm = 1/3.3):
         self.path = path
         self.delim = self.path[-1]
         path_split = self.path.split(self.delim)
         self.experiment = path_split[-3]
-        self.pixel_to_mm = 1/3.3            # real-time setup
+        self.pixel_to_mm = pixel_to_mm
+        #self.pixel_to_mm = 1/3.3            # real-time setup
         #self.pixel_to_mm = 1/1.955            # Dana's setup
         self.sr = 333.33 #sampling rate of behavior camera for treadmill
         self.sr_F = 30
@@ -883,22 +884,44 @@ class loco_class:
                         ds[s] = (pt_next[0]-st_strides_mat[p][s,0,4])/(st_strides_mat[p][s,1,4]-st_strides_mat[p][s,0,4])*100
                 param_mat.append(ds)
             if param == 'phase_st':
+                from scipy.stats import circmean
                 #to do average do circular mean
                 phase_st_paw = []
                 for paw in range(4):  
                     phase_st_radians = np.zeros((np.shape(st_strides_mat[p])[0]))
                     phase_st_radians[:] = np.nan
+                    phase_st_radians_corrected = np.zeros((np.shape(st_strides_mat[p])[0]))
+                    phase_st_radians_corrected[:] = np.nan
                     for s in range(np.shape(st_strides_mat[p])[0]):      
                         val = st_strides_mat[paw][(st_strides_mat[paw][:,0,4]>=st_strides_mat[p][s,0,4])&(st_strides_mat[paw][:,0,4]<=st_strides_mat[p][s,1,4]),0,4]
                         if len(val)>0:
                             phase_st = (val[0]-st_strides_mat[p][s,0,4])/(st_strides_mat[p][s,1,4]-st_strides_mat[p][s,0,4])
                             value_radians = phase_st*2*pi
+                            phase_st_radians[s] = value_radians
+                            # Apply manual correction
                             if value_radians > 2*pi:
-                                phase_st_radians[s] = value_radians-(2*pi)
+                                phase_st_radians_corrected[s] = value_radians-(2*pi)
                             else:
-                                phase_st_radians[s] = value_radians
-                    phase_st_paw.append(phase_st_radians)
+                                phase_st_radians_corrected[s] = value_radians
+                    '''
+                    plt.figure()
+                    plt.plot(phase_st_radians_corrected, 'b', label='Corrected')
+                    plt.title('Phase of paw '+str(paw)+' wrt paw '+str(p))
+                    plt.axhline(circmean(phase_st_radians_corrected, nan_policy='omit'), color='b', linestyle='dotted')
+                    # Alternatively, apply unwrap, accounting for nan values --> introduces drifts in the values, but circmean is always the same
+                    mask = ~np.isnan(phase_st_radians)  # Find non-NaN values
+                    unwrapped = np.full_like(phase_st_radians, np.nan)  # Create an output array filled with NaN
+                    unwrapped[mask] = np.unwrap(phase_st_radians[mask], discont=np.pi)  # Unwrap only valid values
+                    phase_st_radians_unwrapped = unwrapped
+                    plt.plot(phase_st_radians_unwrapped, 'r', label='Unwrapped')
+                    plt.axhline(circmean(phase_st_radians_unwrapped, nan_policy='omit'), color='r', linestyle='dotted')
+                    plt.legend()
+                    plt.show() 
+'''
+                    phase_st_paw.append(phase_st_radians_corrected)
+                     
                 param_mat.append(phase_st_paw)
+                
         return param_mat
 
     def prepare_and_compute_gait_param(self, animal_list, Ntrials, param_sym_name, session_list, bs_bool, stim_start):   #bodycenter,final_tracks,paws_rel,st_strides_mat,sw_pts_mat,param):
