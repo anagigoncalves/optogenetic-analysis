@@ -75,4 +75,10 @@ for count_animal, animal in enumerate(animal_list):
     
 
             # Plot the average of all trials for each animal, paw and axis
-            kinematic_functions.plot_resampled_position_all_trials(traj_resampled_all_trials[paw_names[paw]][axis], axis, paw_names[paw], animal, path_save, center=center, force_center=force_center)
+            # kinematic_functions.plot_resampled_position_all_trials(traj_resampled_all_trials[paw_names[paw]][axis], axis, paw_names[paw], animal, path_save, center=center, force_center=force_center)
+
+
+            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(28)), path_save, center=center, force_center=force_center)
+            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9)), path_save, center=center, force_center=force_center)
+            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9,19)), path_save, center=center, force_center=force_center)
+            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(19,28)), path_save, center=center, force_center=force_center)
