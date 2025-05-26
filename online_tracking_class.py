@@ -2433,6 +2433,41 @@ class otrack_class:
             plt.savefig(path_save + plot_name + '_time_hist.svg')
         return time_from_event_on, time_from_event_off
 
+            
+    def plot_predicted_cspk_phase_hist(self, predicted_cspk_data, fontsize_plot, path_save, plot_name, print_plots):
+        """Plots the histograms (step-like) of the onset and offset phases of light stimulations with the stride
+        in the phase in the background.
+        Inputs:
+            predicted_cspk_data: (list) predicted cspk phase values
+            fontsize_plot: (int) size of letters in plot
+            path_save: (str) with path to save plots
+            plot_name: (str) plot name that can include animal name and session
+            print_plots: boolean"""
+        hist_predicted_cspk = np.histogram(predicted_cspk_data, range=(
+            np.min(predicted_cspk_data), np.max(predicted_cspk_data)))
+        
+        weights_predicted_cspk = np.ones_like(predicted_cspk_data) / np.max(hist_predicted_cspk[0])
+        amp_plot = 0.5
+        time = np.arange(-1, 2, np.round(1 / self.sr, 3))
+        FR = amp_plot * np.sin(2 * np.pi * time + (np.pi / 2)) + amp_plot
+        fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
+        ax.plot(time, FR, color='lightgray', zorder=0)
+        ax.hist(predicted_cspk_data, histtype='step', color='blue', linewidth=4, weights=weights_predicted_cspk)
+        # ax.hist(onset_data, histtype='step', color='black', linewidth=4)
+        # ax.hist(offset_data, histtype='step', color='dimgray', linewidth=4)
+        ax.set_xticks([-1, -0.5, 0, 0.5, 1, 1.5, 2])
+        ax.set_xticklabels(['-100', '-50', '0', '50', '100', '150', '200'])
+        ax.set_xlabel('Phase (%)', fontsize=fontsize_plot)
+        ax.set_ylabel('Predicted Cspk counts', fontsize=fontsize_plot)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(axis='both', which='major', labelsize=fontsize_plot - 2)
+        if print_plots:
+            plt.savefig(path_save + plot_name)
+            plt.savefig(path_save + plot_name + '.svg')
+        return
+    
+    
     def plot_laser_presentation_phase_benchmark(self, light_onset_phase, light_offset_phase, event, fontsize_plot,
             stim_nr, stride_nr, cmap_name, path_save, plot_name):
         """Plot on a schematic stride in phase the distribution of onsets and offsets for laser presentations.
