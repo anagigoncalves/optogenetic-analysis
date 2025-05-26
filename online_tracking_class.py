@@ -117,7 +117,7 @@ class otrack_class:
             tr_ind = np.where(trial_ordered[f] == trial_order)[0][0]
             files_ordered.append(filelist[tr_ind])
         for trial, f in enumerate(files_ordered): #for each metadata file
-            metadata = pd.read_csv(os.path.join(self.path, f), names=['a','b','c','d','e','f','g','h','i','j']) #ADD HEADER AND IT SHOULD BE FINE
+            metadata = pd.read_csv(os.path.join(self.path, f), encoding = "utf-8", names=['a','b','c','d','e','f','g','h','i','j']) #ADD HEADER AND IT SHOULD BE FINE
             cam_timestamps = [0]
             for t in np.arange(1, len(metadata.iloc[:,9])):
                 cam_timestamps.append(self.converttime(metadata.iloc[t,9]-metadata.iloc[0,9])) #get the camera timestamps subtracting the first as the 0
@@ -274,22 +274,52 @@ class otrack_class:
             for count_f, f in enumerate(otracks_frame_counter):
                 meta_frame_idx = np.where(f == frames_cam)[0][0]
                 otracks_frame_counter_real.append(frames_cam_correct_nr[meta_frame_idx])
-            otracks_timestamps = np.array(timestamps_session[trial])[
-                np.array(otracks_frame_counter_real)]  # get timestamps of synchronizer for each otrack frame
-            # create lists to add them to a dataframe
-            otracks_time.extend(np.array(otracks_timestamps))  # list of timestamps
-            otracks_frames.extend(np.array(otracks_frame_counter_real))  # list of frame counters
-            otracks_trials.extend(
-                np.array(np.ones(len(otracks_frame_counter)) * (self.trials[trial])))  # list of trial value
-            otracks_posx.extend(
-                np.array(otracks.iloc[:, 2]))  # list of otrack paw x position
-            otracks_st.extend(
-                np.array(otracks.iloc[:, 3]))  # list of otrack when in stance
-            otracks_sw.extend(
-                np.array(otracks.iloc[:, 4]))  # list of otrack when in swing
+            try:
+                otracks_timestamps = np.array(timestamps_session[trial])[
+                    np.array(otracks_frame_counter_real)]  # get timestamps of synchronizer for each otrack frame
+                # create lists to add them to a dataframe
+                otracks_time.extend(np.array(otracks_timestamps))  # list of timestamps
+                otracks_frames.extend(np.array(otracks_frame_counter_real))  # list of frame counters
+                otracks_trials.extend(
+                    np.array(
+                        np.ones(len(otracks_frame_counter)) * (self.trials[trial])))  # list of trial value
+                otracks_posx.extend(
+                    np.array(otracks.iloc[:, 2]))  # list of otrack paw x position
+                otracks_st.extend(
+                    np.array(otracks.iloc[:, 3]))  # list of otrack when in stance
+                otracks_sw.extend(
+                    np.array(otracks.iloc[:, 4]))  # list of otrack when in swing
+            except:
+                print('WEIRD TRIAL ' + str(trial_ordered[
+                                               trial]) + ': There are less timestamps from synchronizer than frames from bonsai!')
+                # can only get the otrack frames until the last frame of the timestamps_session[trial]
+                otracks_frame_counter_real_array = np.array(otracks_frame_counter_real)
+                otracks_frame_counter_real_crop = np.int64(otracks_frame_counter_real[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_timestamps = np.array(timestamps_session[trial])[
+                    np.array(
+                        otracks_frame_counter_real_crop)]  # get timestamps of synchronizer for each otrack frame
+                # create lists to add them to a dataframe
+                otracks_time.extend(np.array(otracks_timestamps))  # list of timestamps
+                otracks_frames.extend(np.array(otracks_frame_counter_real_crop))  # list of frame counters
+                otracks_trials.extend(
+                    np.array(np.ones(len(otracks_frame_counter_real_crop)) * (
+                    self.trials[trial])))  # list of trial value
+                otracks_posx_crop = np.array(np.array(otracks.iloc[:, 2])[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_posy_crop = np.array(np.array(otracks.iloc[:, 3])[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_posz_crop = np.array(np.array(otracks.iloc[:, 4])[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_posx.extend(
+                    otracks_posx_crop)  # list of otrack paw x position
+                otracks_st.extend(
+                    otracks_posy_crop)  # list of otrack when in stance
+                otracks_sw.extend(
+                    otracks_posz_crop)  # list of otrack when in swing
         # creating the dataframe
         otracks = pd.DataFrame({'time': otracks_time, 'frames': otracks_frames, 'trial': otracks_trials,
-                                   'x': otracks_posx, 'st_on': otracks_st, 'sw_on': otracks_sw})
+                                'x': otracks_posx, 'st_on': otracks_st, 'sw_on': otracks_sw})
         if not os.path.exists(os.path.join(self.path, 'processed files', animal)):  # saving the csv
             os.mkdir(os.path.join(self.path, 'processed files', animal))
         otracks.to_csv(
@@ -338,20 +368,58 @@ class otrack_class:
             for count_f, f in enumerate(otracks_frame_counter):
                 meta_frame_idx = np.where(f == frames_cam)[0][0]
                 otracks_frame_counter_real.append(frames_cam_correct_nr[meta_frame_idx])
-            otracks_timestamps = np.array(timestamps_session[trial])[
-                np.array(otracks_frame_counter_real)]  # get timestamps of synchronizer for each otrack frame
-            stance_frames = np.where(otracks.iloc[:, 3]==True)[0] #get all the otrack where it detected a stance (above the threshold set in bonsai)
-            swing_frames = np.where(otracks.iloc[:, 4]==True)[0] #get all the otrack where it detected a swing (above the threshold set in bonsai)
-            # create lists to add them to a dataframe
-            otracks_st_time.extend(np.array(otracks_timestamps)[stance_frames]) #list of timestamps
-            otracks_sw_time.extend(np.array(otracks_timestamps)[swing_frames]) #list of timestamps
-            otracks_st_frames.extend(np.array(otracks_frame_counter_real)[stance_frames]) #list of frame counters
-            otracks_sw_frames.extend(np.array(otracks_frame_counter_real)[swing_frames]) #list of frame counters
-            otracks_st_trials.extend(np.array(np.ones(len(otracks_frame_counter_real))[stance_frames]*(self.trials[trial]))) #list of trial value
-            otracks_sw_trials.extend(np.array(np.ones(len(otracks_frame_counter_real))[swing_frames]*(self.trials[trial]))) #list of trial value
-            otracks_st_posx.extend(np.array(otracks.iloc[stance_frames, 2])) #list of otrack paw x position when in stance
-            otracks_sw_posx.extend(np.array(otracks.iloc[swing_frames, 2])) #list of otrack paw x position when in swing
-        #creating the dataframe
+            try:
+                otracks_timestamps = np.array(timestamps_session[trial])[
+                    np.array(otracks_frame_counter_real)]  # get timestamps of synchronizer for each otrack frame
+                stance_frames = np.where(otracks.iloc[:, 3] == True)[
+                    0]  # get all the otrack where it detected a stance (above the threshold set in bonsai)
+                swing_frames = np.where(otracks.iloc[:, 4] == True)[
+                    0]  # get all the otrack where it detected a swing (above the threshold set in bonsai)
+                # create lists to add them to a dataframe
+                otracks_st_time.extend(np.array(otracks_timestamps)[stance_frames])  # list of timestamps
+                otracks_sw_time.extend(np.array(otracks_timestamps)[swing_frames])  # list of timestamps
+                otracks_st_frames.extend(np.array(otracks_frame_counter_real)[stance_frames])  # list of frame counters
+                otracks_sw_frames.extend(np.array(otracks_frame_counter_real)[swing_frames])  # list of frame counters
+                otracks_st_trials.extend(np.array(np.ones(len(otracks_frame_counter_real))[stance_frames] * (
+                self.trials[trial])))  # list of trial value
+                otracks_sw_trials.extend(np.array(np.ones(len(otracks_frame_counter_real))[swing_frames] * (
+                self.trials[trial])))  # list of trial value
+                otracks_st_posx.extend(
+                    np.array(otracks.iloc[stance_frames, 2]))  # list of otrack paw x position when in stance
+                otracks_sw_posx.extend(
+                    np.array(otracks.iloc[swing_frames, 2]))  # list of otrack paw x position when in swing
+            except:
+                print('WEIRD TRIAL ' + str(trial_ordered[
+                                               trial]) + ': There are less timestamps from synchronizer than frames from bonsai!')
+                # can only get the otrack frames until the last frame of the timestamps_session[trial]
+                otracks_frame_counter_real_array = np.array(otracks_frame_counter_real)
+                otracks_frame_counter_real_crop = np.int64(otracks_frame_counter_real[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_timestamps = np.array(timestamps_session[trial])[
+                    np.array(
+                        otracks_frame_counter_real_crop)]  # get timestamps of synchronizer for each otrack frame
+                st_tracks = np.array(otracks.iloc[:, 3])[:np.int64(
+                        np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])]
+                sw_tracks = np.array(otracks.iloc[:, 3])[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])]
+                stance_frames_crop = np.where(st_tracks==True)[0] #get all the otrack where it detected a stance (above the threshold set in bonsai)
+                swing_frames_crop = np.where(sw_tracks==True)[0] #get all the otrack where it detected a swing (above the threshold set in bonsai)
+                # create lists to add them to a dataframe
+                otracks_st_time.extend(np.array(otracks_timestamps)[stance_frames_crop]) #list of timestamps
+                otracks_sw_time.extend(np.array(otracks_timestamps)[swing_frames_crop]) #list of timestamps
+                otracks_st_frames.extend(np.array(otracks_frame_counter_real_crop)[stance_frames_crop]) #list of frame counters
+                otracks_sw_frames.extend(np.array(otracks_frame_counter_real_crop)[swing_frames_crop]) #list of frame counters
+                otracks_st_trials.extend(np.array(np.ones(len(otracks_frame_counter_real_crop))[stance_frames_crop]*(self.trials[trial]))) #list of trial value
+                otracks_sw_trials.extend(np.array(np.ones(len(otracks_frame_counter_real_crop))[swing_frames_crop]*(self.trials[trial]))) #list of trial value
+                otracks_st_posx_crop = np.array(np.array(otracks.iloc[stance_frames_crop, 2])[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_st_posx.extend(
+                    otracks_st_posx_crop)  # list of otrack paw x position
+                otracks_sw_posx_crop = np.array(np.array(otracks.iloc[swing_frames_crop, 2])[:np.int64(
+                    np.where(otracks_frame_counter_real_array <= len(timestamps_session[trial]))[0][-1])])
+                otracks_sw_posx.extend(
+                    otracks_sw_posx_crop)  # list of otrack paw x position
+        #        #creating the dataframe
         otracks_st = pd.DataFrame({'time': otracks_st_time, 'frames': otracks_st_frames, 'trial': otracks_st_trials,
             'x': otracks_st_posx})    #, 'y': otracks_st_posy})
         otracks_sw = pd.DataFrame({'time': otracks_sw_time, 'frames': otracks_sw_frames, 'trial': otracks_sw_trials,
@@ -477,26 +545,51 @@ class otrack_class:
             [final_tracks, tracks_tail, joints_wrist, joints_elbow, ear, bodycenter] = loco.read_h5(f, 0.9, 0) #read h5 using the full network features
             [st_strides_mat, sw_pts_mat] = loco.get_sw_st_matrices(final_tracks, 1)  # swing and stance detection, exclusion of strides
             #get lists for dataframe
-            offtracks_st_time.extend(timestamps_session[count_t][np.int64(np.array(st_strides_mat[p][:, 0, -1]))]) #stance onset time in seconds
-            if (len(timestamps_session[count_t])<np.int64(np.array(st_strides_mat[p][:, 1, -1]))).any():
-                offtracks_st_off_time.extend(timestamps_session[count_t][np.where(np.int64(np.array(sw_pts_mat[p][:, 0, -1]))<len(timestamps_session[count_t]))[0]])
-            else:
+            try:
+                offtracks_st_time.extend(timestamps_session[count_t][np.int64(np.array(st_strides_mat[p][:, 0, -1]))]) #stance onset time in seconds
                 offtracks_st_off_time.extend(timestamps_session[count_t][np.int64(np.array(sw_pts_mat[p][:, 0, -1]))]) #stance offset time in seconds, same as swing onset
-            offtracks_sw_time.extend(timestamps_session[count_t][np.int64(np.array(sw_pts_mat[p][:, 0, -1]))]) #swing onset time in seconds
-            if (len(timestamps_session[count_t])<np.int64(np.array(st_strides_mat[p][:, 1, -1]))).any():
-                offtracks_sw_off_time.extend(timestamps_session[count_t][np.where(np.int64(np.array(st_strides_mat[p][:, 1, -1]))<len(timestamps_session[count_t]))[0]])
-            else:
+                offtracks_sw_time.extend(timestamps_session[count_t][np.int64(np.array(sw_pts_mat[p][:, 0, -1]))]) #swing onset time in seconds
                 offtracks_sw_off_time.extend(timestamps_session[count_t][np.int64(np.array(st_strides_mat[p][:, 1, -1]))]) #swing offset time in seconds, same as stride offset or the next stride stance onset
-            offtracks_st_frames.extend(np.array(st_strides_mat[p][:, 0, -1])) #stance onset idx
-            offtracks_sw_frames.extend(np.array(sw_pts_mat[p][:, 0, -1])) #stance offset idx
-            offtracks_st_off_frames.extend(np.array(sw_pts_mat[p][:, 0, -1])) #swing onset idx
-            offtracks_sw_off_frames.extend(np.array(st_strides_mat[p][:, 1, -1])) #swing offset idx
-            offtracks_st_trials.extend(np.ones(len(st_strides_mat[p][:, 0, 0])) * trial) #trial number
-            offtracks_sw_trials.extend(np.ones(len(sw_pts_mat[p][:, 0, -1])) * trial) #trial number
-            offtracks_st_posx.extend(final_tracks[0, p, np.int64(st_strides_mat[p][:, 0, -1])]) #paw x position for stance onset
-            offtracks_sw_posx.extend(final_tracks[0, p, np.int64(sw_pts_mat[p][:, 0, -1])]) #paw x position for swing onset
-            offtracks_st_posy.extend(final_tracks[1, p, np.int64(st_strides_mat[p][:, 0, -1])]) #paw y position for stance onset
-            offtracks_sw_posy.extend(final_tracks[1, p, np.int64(sw_pts_mat[p][:, 0, -1])]) #paw y position for swing onset
+                offtracks_st_frames.extend(np.array(st_strides_mat[p][:, 0, -1])) #stance onset idx
+                offtracks_sw_frames.extend(np.array(sw_pts_mat[p][:, 0, -1])) #stance offset idx
+                offtracks_st_off_frames.extend(np.array(sw_pts_mat[p][:, 0, -1])) #swing onset idx
+                offtracks_sw_off_frames.extend(np.array(st_strides_mat[p][:, 1, -1])) #swing offset idx
+                offtracks_st_trials.extend(np.ones(len(st_strides_mat[p][:, 0, 0])) * trial) #trial number
+                offtracks_sw_trials.extend(np.ones(len(sw_pts_mat[p][:, 0, -1])) * trial) #trial number
+                offtracks_st_posx.extend(final_tracks[0, p, np.int64(st_strides_mat[p][:, 0, -1])]) #paw x position for stance onset
+                offtracks_sw_posx.extend(final_tracks[0, p, np.int64(sw_pts_mat[p][:, 0, -1])]) #paw x position for swing onset
+                offtracks_st_posy.extend(final_tracks[1, p, np.int64(st_strides_mat[p][:, 0, -1])]) #paw y position for stance onset
+                offtracks_sw_posy.extend(final_tracks[1, p, np.int64(sw_pts_mat[p][:, 0, -1])]) #paw y position for swing onset
+            except:
+                print('WEIRD TRIAL ' + str(
+                    trial_ordered[count_t]) + ': There are less timestamps from synchronizer than frames from bonsai!')
+                st_strides_mat_paw = np.int64(np.array(st_strides_mat[p][:, 0, -1]))
+                st_strides_mat_paw_offset = np.int64(np.array(st_strides_mat[p][:, 1, -1]))
+                sw_pts_mat_paw = np.int64(np.array(sw_pts_mat[p][:, 0, -1]))
+                st_strides_mat_paw_crop = np.array(st_strides_mat_paw[:
+                                                                      np.where(st_strides_mat_paw <= len(
+                                                                          timestamps_session[count_t]))[0][-1]])
+                st_strides_mat_paw_offset_crop = np.array(st_strides_mat_paw_offset[:
+                                                                      np.where(st_strides_mat_paw_offset <= len(
+                                                                          timestamps_session[count_t]))[0][-1]])
+                sw_pts_mat_paw_crop = np.array(sw_pts_mat_paw[:
+                                                              np.where(
+                                                                  sw_pts_mat_paw <= len(timestamps_session[count_t]))[
+                                                                  0][-1]])
+                offtracks_st_time.extend(timestamps_session[count_t][np.int64(np.array(st_strides_mat_paw_crop))]) #stance onset time in seconds
+                offtracks_st_off_time.extend(timestamps_session[count_t][np.int64(np.array(sw_pts_mat_paw_crop))]) #stance offset time in seconds, same as swing onset
+                offtracks_sw_time.extend(timestamps_session[count_t][np.int64(np.array(sw_pts_mat_paw_crop))]) #swing onset time in seconds
+                offtracks_sw_off_time.extend(timestamps_session[count_t][np.int64(np.array(st_strides_mat_paw_offset_crop))]) #swing offset time in seconds, same as stride offset or the next stride stance onset
+                offtracks_st_frames.extend(np.array(st_strides_mat_paw_crop)) #stance onset idx
+                offtracks_sw_frames.extend(np.array(sw_pts_mat_paw_crop)) #stance offset idx
+                offtracks_st_off_frames.extend(np.array(sw_pts_mat_paw_crop)) #swing onset idx
+                offtracks_sw_off_frames.extend(np.array(st_strides_mat_paw_offset_crop)) #swing offset idx
+                offtracks_st_trials.extend(np.ones(len(st_strides_mat_paw_crop)) * trial) #trial number
+                offtracks_sw_trials.extend(np.ones(len(sw_pts_mat_paw_crop)) * trial) #trial number
+                offtracks_st_posx.extend(final_tracks[0, p, np.int64(st_strides_mat_paw_crop)]) #paw x position for stance onset
+                offtracks_sw_posx.extend(final_tracks[0, p, np.int64(sw_pts_mat_paw_crop)]) #paw x position for swing onset
+                offtracks_st_posy.extend(final_tracks[1, p, np.int64(st_strides_mat_paw_crop)]) #paw y position for stance onset
+                offtracks_sw_posy.extend(final_tracks[1, p, np.int64(sw_pts_mat_paw_crop)]) #paw y position for swing onset
         #create dataframe
         offtracks_st = pd.DataFrame(
             {'time': offtracks_st_time, 'time_off': offtracks_st_off_time, 'frames': offtracks_st_frames, 'frames_off': offtracks_st_off_frames,
@@ -1985,6 +2078,192 @@ class otrack_class:
             plt.savefig(path_save + plot_name)
             plt.savefig(path_save + plot_name + '.svg')
         return
+
+    def plot_laser_presentation_phase_hist_allanimals(self, onset_data, offset_data, fontsize_plot, hist_norm,
+                                        color_onset, color_offset, path_save, plot_name, print_plots):
+        """Plots the histograms (step-like) of the onset and offset phases of light stimulations with the stride
+        in the phase in the background. Each line represents one animal.
+        Inputs:
+            onset_data: (list) onset phase values
+            offset_data: (list) offset phase values
+            fontsize_plot: (int) size of letters in plot
+            hist_norm: boolean to normalize the histograms to its maximum
+            color_onset: color onset phases (str)
+            color_offset: color offset phases (str)
+            path_save: (str) with path to save plots
+            plot_name: (str) plot name that can include animal name and session
+            print_plots: boolean"""
+
+        if hist_norm:
+            amp_plot = 1
+        else:
+            amp_plot = 400
+        time = np.arange(-0.5, 1.5, np.round(1 / self.sr, 3))
+        FR = amp_plot * np.sin(2 * np.pi * time + (np.pi / 2))+amp_plot
+        fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
+        ax.plot(time, FR, color='lightgray', zorder=0)
+        for count_a in range(len(onset_data)):
+            hist_onset = np.histogram(onset_data[count_a], range=(
+                np.min(onset_data[count_a]), np.max(onset_data[count_a])),
+                                      bins=20)
+            hist_offset = np.histogram(offset_data[count_a], range=(
+                np.min(offset_data[count_a]), np.max(offset_data[count_a])),
+                                       bins=20)
+            if hist_norm:
+                weights_onset = np.ones_like(onset_data[count_a]) / np.max(hist_onset[0])
+                weights_offset = np.ones_like(offset_data[count_a]) / np.max(hist_offset[0])
+                ax.hist(onset_data[count_a], histtype='step', color=color_onset, alpha=1-(count_a)*0.2, linewidth=2, weights=weights_onset)
+                ax.hist(offset_data[count_a], histtype='step', color=color_offset, alpha=1-(count_a)*0.2, linewidth=2, weights=weights_offset)
+            else:
+                ax.hist(onset_data[count_a], histtype='step', color=color_onset,
+                        alpha=1 - (count_a) * 0.1, linewidth=2)
+                ax.hist(offset_data[count_a], histtype='step', color=color_offset,
+                        alpha=1 - (count_a) * 0.1, linewidth=2)
+        ax.set_xticks([-0.5, 0, 0.5, 1, 1.5])
+        ax.set_xticklabels(['-50', '0', '50', '100', '150'])
+        ax.set_xlabel('Stride phase (%)', fontsize=fontsize_plot)
+        ax.set_ylabel('Laser presentation\ncounts', fontsize=fontsize_plot)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.set_xlim(-0.5, 1.5)
+        ax.tick_params(axis='both', which='major', labelsize=fontsize_plot - 2)
+        if print_plots:
+            plt.savefig(path_save + plot_name)
+            plt.savefig(path_save + plot_name + '.svg')
+        return
+
+    def plot_laser_presentation_phase_hist_heatmap(self, onset_data, offset_data, fontsize_plot,
+                                                      color_cond, path_save, plot_name, print_plots):
+        """Plots the histograms (visualization like heatmap) of the onset and offset phases of light stimulations with the stride
+        in the phase in the background
+        Inputs:
+            onset_data: (list) onset phase values
+            offset_data: (list) offset phase values
+            fontsize_plot: (int) size of letters in plot
+            color_cond: color phases (str) - it capitalizes and includes an s
+            For example "green"->"Greens"
+            path_save: (str) with path to save plots
+            plot_name: (str) plot name that can include animal name and session
+            print_plots: boolean"""
+        # histogram of onset phases
+        light_onset_phase_viz_hist = np.histogram(onset_data,range = (
+            np.min(onset_data), np.max(onset_data)))
+        light_onset_phase_st_viz_hist_norm = light_onset_phase_viz_hist[0] / np.nanmax(
+            light_onset_phase_viz_hist[0])
+        # Plot onset and histograms phase distributions
+        cmap = plt.get_cmap(color_cond.capitalize() + 's')
+        color_bars = [cmap(i) for i in np.linspace(0, 1, 11)]
+        time = np.arange(-0.5, 1.5, np.round(1 / self.sr, 3))
+        FR = np.sin(2 * np.pi * time + (np.pi / 2)) + 1
+        fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
+        plt.plot(time, FR, color='black')
+        for b in range(len(light_onset_phase_viz_hist[1]) - 1):
+            plt.bar(light_onset_phase_viz_hist[1][b], height=2, width=0.15,
+                    color=color_bars[np.int64(np.ceil(light_onset_phase_st_viz_hist_norm[b] * 10))])
+        plt.colorbar(ScalarMappable(cmap=cmap, norm=plt.Normalize(0, np.max(light_onset_phase_viz_hist[0]))),
+                     ticks=np.linspace(0, np.max(light_onset_phase_viz_hist[0]), 11), label='counts')
+        ax.set_xticks([-0.5, 0, 0.5, 1, 1.5])
+        ax.set_xticklabels(['-50', '0', '50', '100', '150'])
+        ax.set_xlabel('Phase (%)', fontsize=fontsize_plot)
+        ax.get_yaxis().set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        if print_plots:
+            plt.savefig(path_save + plot_name + '_onset')
+            plt.savefig(path_save + plot_name + '_onset.svg')
+        # histogram of offset phases
+        light_offset_phase_viz_hist = np.histogram(offset_data, range = (
+            np.min(offset_data), np.max(offset_data)))
+        light_offset_phase_st_viz_hist_norm = light_offset_phase_viz_hist[0] / np.nanmax(
+            light_offset_phase_viz_hist[0])
+        # Plot offset and histograms phase distributions
+        fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
+        plt.plot(time, FR, color='black')
+        for b in range(len(light_offset_phase_viz_hist[1]) - 1):
+            plt.bar(light_offset_phase_viz_hist[1][b], height=2, width=0.1,
+                    color=color_bars[np.int64(np.ceil(light_offset_phase_st_viz_hist_norm[b] * 10))])
+        plt.colorbar(ScalarMappable(cmap=cmap, norm=plt.Normalize(0, np.max(light_offset_phase_viz_hist[0]))),
+                     ticks=np.linspace(0, np.max(light_offset_phase_viz_hist[0]), 11), label='counts')
+        ax.set_xticks([-0.5, 0, 0.5, 1, 1.5])
+        ax.set_xticklabels(['-50', '0', '50', '100', '150'])
+        ax.set_xlabel('Phase (%)', fontsize=fontsize_plot)
+        ax.get_yaxis().set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        if print_plots:
+            plt.savefig(path_save + plot_name + '_offset')
+            plt.savefig(path_save + plot_name + '_offset.svg')
+        return
+
+    @staticmethod
+    def laser_presentation_time_hist(trials_plot, trials, laser_on, st_strides_trials, sw_strides_trials, stride_event,
+                                          window, paw, plot_boolean, color_onset, color_offset, fontsize_plot, path_save, plot_name):
+        """Plots the histograms (step-like) of the onset and offset times in relation to the desired stride event (stance or swing onset)
+        It looks for the stimulation times within a window defined by the user in the window parameter.
+        E.g. if window=0.05, it looks for stimulation time 50 ms before and after stride event
+        Inputs:
+            trials_plot: (list) list of trials to compute this information
+            trials: (list) list of all trials in session (for sanity check of trial matching to indexes)
+            laser_on: (dataframe) of stimulation on and off times
+            st_strides_trials: array with the stance onset and offset information
+            sw_strides_trials: array with the swing onset information
+            stride_event: (string) stride event to align to (stance or swing onset)
+            window: (float) window of time to look within the stride event
+            paw: (str) choose from FR, HR, FL, HL paw
+            plot_boolean: (bool) to choose to plot single animal histogram
+            color_onset: color onset times (str)
+            color_offset: color offset times (str)
+            fontsize_plot: (int) size of letters in plot
+            path_save: (str) with path to save plots
+            plot_name: (str) plot name that can include animal name and session"""
+        if paw == 'FR':
+            paw_idx = 0
+        if paw == 'HR':
+            paw_idx = 1
+        if paw == 'FL':
+            paw_idx = 2
+        if paw == 'HL':
+            paw_idx = 3
+        time_from_event_on = []
+        time_from_event_off = []
+        for trial in trials_plot:
+            if len(np.where(trials == trial)[0]) > 1:
+                print("This session has repeated trials! Go to the list and remove bad trial.")
+            trial_id = np.where(trials == trial)[0][0]
+            laser_time_on_trial = np.array(laser_on.loc[laser_on['trial'] == trial, 'time_on'])
+            laser_time_off_trial = np.array(laser_on.loc[laser_on['trial'] == trial, 'time_off'])
+            if stride_event == 'stance':
+                stride_event_onset_trial = st_strides_trials[trial_id][paw_idx][:, 0, 0] / 1000
+            if stride_event == 'swing':
+                stride_event_onset_trial = sw_strides_trials[trial_id][paw_idx][:, 0, 0] / 1000
+            time_from_event_trial_on = []
+            time_from_event_trial_off = []
+            for s in stride_event_onset_trial:
+                idx_within_window_on = \
+                np.where((laser_time_on_trial > s - window) & (laser_time_on_trial < s + window))[0]
+                time_from_event_trial_on.extend(laser_time_on_trial[idx_within_window_on] - s)
+                idx_within_window_off = \
+                np.where((laser_time_off_trial > s - window) & (laser_time_off_trial < s + window))[0]
+                time_from_event_trial_off.extend(laser_time_off_trial[idx_within_window_off] - s)
+            time_from_event_on.extend(time_from_event_trial_on)
+            time_from_event_off.extend(time_from_event_trial_off)
+        if plot_boolean:
+            fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
+            ax.axvline(x=0, color='darkgray', linewidth=2)
+            ax.hist(time_from_event_on, histtype='step', color=color_onset, linewidth=2)
+            ax.hist(time_from_event_off, histtype='step', color=color_offset, linewidth=2)
+            ax.set_xlabel('Time from stride event (s)', fontsize=fontsize_plot)
+            ax.set_ylabel('Laser presentation\ncounts', fontsize=fontsize_plot)
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+            ax.set_xlim(-window, window)
+            ax.tick_params(axis='both', which='major', labelsize=fontsize_plot - 2)
+            plt.savefig(path_save + plot_name + '_time_hist')
+            plt.savefig(path_save + plot_name + '_time_hist.svg')
+        return time_from_event_on, time_from_event_off
+
     def plot_laser_presentation_phase_benchmark(self, light_onset_phase, light_offset_phase, event, fontsize_plot,
             stim_nr, stride_nr, cmap_name, path_save, plot_name):
         """Plot on a schematic stride in phase the distribution of onsets and offsets for laser presentations.
