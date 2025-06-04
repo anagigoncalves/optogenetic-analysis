@@ -20,6 +20,7 @@ def resample_strides_position(position, st_matrix, sw_points, paw, num_samples, 
                force_center - if True, the center of the stride will be forced to be at the middle of the stance/swing; default is False
         Output: strides_resampled (strides x num_samples)
     """
+    
     strides_resampled = np.empty((len(st_matrix[paw]),num_samples))
     for s in range(len(st_matrix[paw])-1):
         if center == 'st':
@@ -32,8 +33,8 @@ def resample_strides_position(position, st_matrix, sw_points, paw, num_samples, 
         # New x values for resampled signal with num_samples data points
         if force_center!=0:
             if center == 'st':
-                x_stride_resampled = np.linspace(sw_points[paw][s,0,0],st_matrix[paw][s,0,0], int(num_samples*force_center))
-                x_stride_resampled = np.append(x_stride_resampled, np.linspace(st_matrix[paw][s,0,0],sw_points[paw][s+1,0,0], int(num_samples*force_center)))
+                x_stride_resampled = np.linspace(sw_points[paw][s,0,0],st_matrix[paw][s+1,0,0], int(num_samples*force_center/2))
+                x_stride_resampled = np.append(x_stride_resampled, np.linspace(st_matrix[paw][s+1,0,0],sw_points[paw][s+1,0,0], int(num_samples*force_center/2)))
             elif center == 'sw':
                 x_stride_resampled = np.linspace(st_matrix[paw][s,0,0],sw_points[paw][s,0,0], int(num_samples*force_center))
                 x_stride_resampled = np.append(x_stride_resampled, np.linspace(sw_points[paw][s,0,0],st_matrix[paw][s,1,0], int(num_samples*force_center)))
