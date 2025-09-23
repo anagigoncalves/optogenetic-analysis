@@ -356,3 +356,33 @@ for count_animal, animal in enumerate(included_animal_list):
             kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9)), path_save, center=center, force_center=force_center)
             kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9,19)), path_save, center=center, force_center=force_center)
             kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(19,28)), path_save, center=center, force_center=force_center)
+
+# Do histograms of stride and laser onsets and offsets for all animals
+paw=0               # To make flexible for managing multiple paws, but currently only one paw is used
+all_onsets = list(chain.from_iterable(stride_laser_onsets_all_trials_all_animals))   
+all_offsets =  list(chain.from_iterable(stride_laser_offsets_all_trials_all_animals)) 
+all_stride_onsets = list(chain.from_iterable(stride_onsets_all_trials_all_animals))   
+all_stride_offsets =  list(chain.from_iterable(stride_offsets_all_trials_all_animals)) 
+
+fig, ax = plt.subplots(figsize=(14, 8))
+bin_width = 5
+min_edge = min(np.nanmin(all_onsets), np.nanmin(all_offsets), np.nanmin(all_stride_onsets), np.nanmin(all_stride_offsets))
+max_edge = max(np.nanmax(all_onsets), np.nanmax(all_offsets), np.nanmax(all_stride_onsets), np.nanmax(all_stride_offsets))
+nbins = np.arange(min_edge, max_edge + bin_width, bin_width)
+
+ax.hist(all_stride_onsets, bins=nbins, alpha=0.3, label='Stride Onsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
+ax.hist(all_stride_offsets, bins=nbins, alpha=0.6, label='Stride Offsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
+ax.hist(all_onsets, bins=nbins, alpha=0.3, label='Laser Onsets', color=color_laser, edgecolor='dark'+color_laser)
+ax.hist(all_offsets, bins=nbins, alpha=0.6, label='Laser Offsets', color=color_laser, edgecolor='dark'+color_laser)
+ax.axvline(x=0, color=paw_colors[paw], linestyle='--', linewidth=1, label=center + ' onset')
+ax.axvline(x=np.nanmedian(all_onsets), color=color_laser, linestyle='-', linewidth=2, label='Med Onset')
+ax.axvline(x=np.nanmedian(all_offsets), color='dark'+color_laser, linestyle='-', linewidth=2, label='Med Offset')
+ax.axvline(x=np.nanmedian(all_stride_onsets), color=paw_colors[paw], linestyle='-', linewidth=2)
+ax.axvline(x=np.nanmedian(all_stride_offsets), color='darkred', linestyle='-', linewidth=2)
+ax.set_xlabel('Time (ms)', fontsize=18)
+ax.set_ylabel('Frequency', fontsize=18)
+ax.set_xlim(time_range[0], time_range[1])
+ax.legend(fontsize=14, bbox_to_anchor=(1.1, 1), loc='upper left')
+fig.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout to ensure the title is not cut off
+ax2.tick_params(axis='both', which='major', labelsize=16)
+plt.savefig( "ALLanimals_laser_onset_offset_histogram_all_trials_"+str(hist_all)+".png")
