@@ -347,7 +347,25 @@ for count_animal, animal in enumerate(included_animal_list):
             plt.savefig(path_save + animal + "_laser_onset_offset_histogram_all_trials_"+str(hist_all)+".png")
             #plt.show()
 
-
+            # Plot all single trajectories and also the average trajectory
+            for t in range(selected_trajectories.shape[0]):
+                # Compute velocity
+                velocity = np.gradient(selected_trajectories[t], selected_times[t])
+                if np.nanquantile(velocity,0.85) > 0.65 or np.nanquantile(velocity,0.15)<-0.65:  # Avoid division by zero
+                    ax_all_trajectories.plot(selected_times[t], selected_trajectories[t], color='darkred', linewidth=0.5, alpha=0.5)
+                    #ax_all_trajectories.plot(selected_times[t], velocity, color='darkred', linewidth=0.5, alpha=0.5)
+                else:
+                    ax_all_trajectories.plot(selected_times[t], selected_trajectories[t], color='gray', linewidth=0.5, alpha=0.2)
+                    #ax_all_trajectories.plot(selected_times[t], velocity, color='gray', linewidth=0.5, alpha=0.2)
+                #ax_all_trajectories.plot(velocity, color='gray', linewidth=0.5, alpha=0.2)
+                #ax_all_trajectories.plot(selected_times[t], selected_trajectories[t], color='gray', linewidth=0.5, alpha=0.2)
+            ax_all_trajectories.plot(avg_time, avg_trajectory, color=paw_colors[paw], linewidth=2, label='Avg')
+            ax_all_trajectories.set_xlim(time_range[0], time_range[1])
+            ax_all_trajectories.set_ylim([np.nanmin(avg_trajectory-std_trajectory), np.nanmax(avg_trajectory+std_trajectory)])
+            ax_all_trajectories.set_ylabel('Position (mm)', fontsize=14)
+            ax_all_trajectories.set_xlabel('Time (ms)', fontsize=14)
+           # plt.show()
+            fig_all_trajectories.savefig(animal + "_stacked_stride_positions_with_high_peak_velocity_all_trials"+str(hist_all)+"first_tied.png", bbox_inches='tight', dpi=300)
             # Plot the average of all trials for each animal, paw and axis
             # kinematic_functions.plot_resampled_position_all_trials(traj_resampled_all_trials[paw_names[paw]][axis], axis, paw_names[paw], animal, path_save, center=center, force_center=force_center)
 
