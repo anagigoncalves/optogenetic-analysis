@@ -156,10 +156,21 @@ for count_animal, animal in enumerate(included_animal_list):
                                         break   # Found the first valid onset and offset, no need to check further
                             else:
                                 for onset_time, offset_time in zip(current_onset_times, current_offset_times):
+                                    # Onset and offset within stride bounds
                                     if sw_pts_mat[paw][s, 0, 0] <= onset_time < offset_time <= sw_pts_mat[paw][s + 1, 0, 0]:
                                         current_stride_laser_onset = onset_time - stance_onset
                                         current_stride_laser_offset = offset_time - stance_onset
                                         break   # Found the first valid onset and offset, no need to check further
+                                    # Just onset within stride bounds
+                                    if sw_pts_mat[paw][s, 0, 0] <= onset_time <= sw_pts_mat[paw][s + 1, 0, 0] and offset_time > sw_pts_mat[paw][s + 1, 0, 0]:
+                                        current_stride_laser_onset = onset_time - stance_onset
+                                        current_stride_laser_offset = sw_pts_mat[paw][s + 1, 0, 0] - stance_onset
+                                        break
+                                    # Just offset within stride bounds
+                                    if sw_pts_mat[paw][s, 0, 0] <= offset_time <= sw_pts_mat[paw][s + 1, 0, 0] and onset_time < sw_pts_mat[paw][s, 0, 0]:
+                                        current_stride_laser_onset = sw_pts_mat[paw][s, 0, 0] - stance_onset
+                                        current_stride_laser_offset = offset_time - stance_onset
+                                        break
                     elif center == 'sw':
                         current_stride_position = paws_rel[axis][paw][int(st_strides_mat[paw][s,0,-1]):int(st_strides_mat[paw][s,1,-1])]
                         current_stride_time = np.linspace(st_strides_mat[paw][s,0,0],st_strides_mat[paw][s,1,0], len(current_stride_position))
@@ -190,8 +201,16 @@ for count_animal, animal in enumerate(included_animal_list):
                                         current_stride_laser_onset = onset_time - swing_onset
                                         current_stride_laser_offset = offset_time - swing_onset
                                         break   # Found the first valid onset and offset, no need to check further
+                                    if st_strides_mat[paw][s,0,0] <= onset_time <= st_strides_mat[paw][s,1,0] and offset_time > st_strides_mat[paw][s,1,0]:
+                                        current_stride_laser_onset = onset_time - swing_onset
+                                        current_stride_laser_offset = st_strides_mat[paw][s,1,0] - swing_onset
+                                        break
+                                    if st_strides_mat[paw][s,0,0] <= offset_time <= st_strides_mat[paw][s,1,0] and onset_time < st_strides_mat[paw][s,0,0]:
+                                        current_stride_laser_onset = st_strides_mat[paw][s,0,0] - swing_onset
+                                        current_stride_laser_offset = offset_time - swing_onset
+                                        break
 
-                    plt.plot(current_stride_time, current_stride_position + step_y * s, color=paw_colors[paw], linewidth=1, alpha=0.2)
+                    #ax_all_trajectories.plot(current_stride_time, current_stride_position, color=paw_colors[paw], linewidth=1, alpha=0.2)
 
 
                     # Append the position to the list
