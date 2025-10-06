@@ -55,3 +55,15 @@ def unwrap_with_nans(phases, unit='deg'):
     unwrapped_phases = np.concatenate(unwrapped_segments)
     
     return unwrapped_phases
+
+
+def compute_rmse(signal1, signal2):
+    """
+    Computes the Root Mean Square Error (RMSE) between two signals.
+    """
+    if len(signal1) != len(signal2):
+        raise ValueError("Signals must have the same length.")
+    mse = np.nanmean((signal1 - signal2) ** 2)  # Mean Squared Error, ignoring NaNs
+    rmse = np.sqrt(mse)  # Root Mean Square Error
+    return rmse
+
