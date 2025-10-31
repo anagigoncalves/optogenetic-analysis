@@ -67,3 +67,18 @@ def compute_rmse(signal1, signal2):
     rmse = np.sqrt(mse)  # Root Mean Square Error
     return rmse
 
+
+def compute_abs_area_between_signals(signal1, signal2):
+    """
+    Computes the area between two signals, ignoring NaNs (area is computed only where both signals are valid).
+    """
+    signal1 = np.asarray(signal1)
+    signal2 = np.asarray(signal2)
+    if signal1.shape != signal2.shape:
+        raise ValueError("Signals must have the same length.")
+    # Only keep indices where both signals are not NaN
+    valid = ~np.isnan(signal1) & ~np.isnan(signal2)
+    if not np.any(valid):
+        return np.nan  # No valid overlap
+    area = np.trapz(signal1[valid] - signal2[valid])
+    return np.abs(area)

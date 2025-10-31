@@ -5,7 +5,7 @@ from scipy.interpolate import CubicSpline
 import numpy as np
 import os
 from plotly.subplots import make_subplots
-from utils import compute_rmse
+from utils import compute_abs_area_between_signals
 
 #TODO: APPLY EVERYTHING TO THE REL SIGNALS!!!
 confidence = 0.8  # Confidence threshold for DLC tracking
