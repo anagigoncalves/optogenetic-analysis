@@ -57,6 +57,27 @@ class loco_class:
         A[np.isnan(A)] = np.interp(x, xp, fp)
         return A
 
+    def inpaint_nans_cubic_spline(self, A):
+        """Interpolates NaNs in 2D numpy arrays using cubic spline (row-wise)
+        Input: A (numpy array, 2D)"""
+        from scipy.interpolate import CubicSpline
+
+        A = np.array(A, dtype=float)  # Ensure float for NaNs
+        for i in range(A.shape[0]):
+            row = A[i, :]
+            time = np.arange(len(row))
+            valid_idx = ~np.isnan(row)
+            if np.sum(valid_idx) > 1:  # Need at least 2 points for spline
+                cs = CubicSpline(time[valid_idx], row[valid_idx], bc_type='clamped')
+                A[i, np.isnan(row)] = cs(time[np.isnan(row)])
+            else:
+                print(f'Warning: Row {i} has insufficient valid points for cubic spline.')
+        not_ok = np.sum(np.isnan(A))
+        if not_ok > 0:
+            print('Warning: ' + str(not_ok) + ' NaNs were not interpolated')
+        return A
+    
+
     def compute_continuous_sym_gaitparam(self, param_trial, st_strides, p1, p2):
         """Compute symmetry value for each stride with reference to first paw you input.
         For each trial (or list with 4 paws)
