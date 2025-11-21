@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 from utils import compute_abs_area_between_signals
 
 #TODO: APPLY EVERYTHING TO THE REL SIGNALS!!!
-confidence = 0.8  # Confidence threshold for DLC tracking
+confidence = 0.9  # Confidence threshold for DLC tracking
 
 def correct_signal_cubic_spline(signal, dt, thr_sig='velocity'):
     """
@@ -69,7 +69,7 @@ path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessio
 path_retracked = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim retracked with ClosedLoop-AliceG-2025-10-06\\'  # retracked with ClosedLoop-AliceG-2025-10-06
 #tied stance stim retracked with finetuned DLC\\'  # retracked with finetuned DLC
 
-# path_retracked = None
+path_retracked = None
 animal = 'MC16848'         #'RN-F20-RightF' 
 session = 1
 trial = 1
@@ -92,6 +92,8 @@ filelist = loco.get_track_files(animal, session)
 if manual_track:
     file_path_FRbottom = path+'MC16848_159_22_0.275_0.275_tied_1_1_FRbottom_points.npy'
     manual_track_FRbottom = np.load(file_path_FRbottom)
+    file_path_STonset = path+'MC16848_159_22_0.275_0.275_tied_1_1_STonset_points.npy'
+    manual_track_STonset = np.load(file_path_STonset)
 
 
 f = filelist[trial-1]
@@ -206,8 +208,8 @@ for p in range(len(paws)):
     throughs = find_peaks(-data_filt)
     stance = peaks[0]
     swing = throughs[0]
-    fig.add_trace(go.Scatter(x=stance, y=data_filt[stance], mode='markers', name='Stance Onset', marker=dict(symbol='star-open',color='orange', size=10)))
-    fig.add_trace(go.Scatter(x=swing, y=data_filt[swing], mode='markers', name='Swing Onset', marker=dict(symbol='star-open',color='green', size=10)))
+    fig.add_trace(go.Scatter(x=stance, y=data_filt[stance], mode='markers', name='Stance Onset on filtered interp spline', marker=dict(symbol='star-open',color='orange', size=10)))
+    fig.add_trace(go.Scatter(x=swing, y=data_filt[swing], mode='markers', name='Swing Onset on filtered interp spline', marker=dict(symbol='star-open',color='green', size=10)))
 
     ### Method 3: Savgol filter, window 21, order 1 - smooths and delays too much
     fig.add_trace(go.Scatter(y=savgol_filter(X_interp[p,:],window_length = 50, polyorder = 3), name='X_filtered_swst w50 ord3', line=dict(color='lightblue')))
@@ -239,14 +241,34 @@ for p in range(len(paws)):
     fig.add_trace(go.Scatter(y=x_velocity_raw, name=paws[p]+' X velocity raw', line=dict(color='green')), secondary_y=True)
     fig.add_trace(go.Scatter(y=x_acceleration_raw, name=paws[p]+' X acceleration raw', line=dict(color='lightgreen')), secondary_y=True)  
 
+    # Add manually tracked stance onset points if available
+    if manual_track:
+        # manual_track_STonset is [N_frames x 2] with [x, y] when present, or [nan, nan] otherwise
+        st_arr = np.array(manual_track_STonset, dtype=float)
+        valid_mask = ~np.isnan(st_arr).all(axis=1)
+        manual_stance_onset_frames = np.where(valid_mask)[0]
+        manual_stance_onset_x = st_arr[manual_stance_onset_frames, 0] * loco.pixel_to_mm  # convert X to mm to match plotted units
+        if manual_stance_onset_frames.size > 0:
+            print(f"Manual stance onset points: {manual_stance_onset_frames.size} (frames {manual_stance_onset_frames[0]} to {manual_stance_onset_frames[-1]})")
+        else:
+            print("Manual stance onset points: none found")
+        fig.add_trace(
+            go.Scatter(
+                x=manual_stance_onset_frames,
+                y=manual_stance_onset_x,
+                mode='markers',
+                name='Manual Stance Onset',
+                marker=dict(symbol='x', color='black', size=6)
+            )
+        )
 
     # Update layout
     fig.update_layout(
         title=animal + ' trial '+str(count_trial)+' - '+paws[p]+' Tracking X Signals'+' confidence '+str(confidence),
         xaxis_title='Frame',
         yaxis_title='Position (mm)',
-        xaxis=dict(range=[13000, 14000]),
-        yaxis=dict(range=[220, 270]),
+        xaxis=dict(autorange=True),
+        yaxis=dict(autorange=True),
         showlegend=True
     )
     
@@ -296,14 +318,73 @@ for p in range(len(paws)):
     #fig_rel.add_trace(go.Scatter(y=savgol_filter(Z_interp[p,:],window_length = 5, polyorder = 1)-np.nanmean(Z_interp[:4,:],axis=0), name='Z_filtered'))
     fig_rel.add_trace(go.Scatter(x=stance, y=corrected_filtered_x[stance], mode='markers', name='Stance Onset', marker=dict(symbol='circle-open',color='orange', size=5)))
     fig_rel.add_trace(go.Scatter(x=swing, y=corrected_filtered_x[swing], mode='markers', name='Swing Onset', marker=dict(symbol='circle-open',color='green', size=5)))
+
+    # Add vertical lines for Zrel zero-crossings and where X and Z velocities are equal
+    x_min, x_max = 16900, 17300
+    # Zero-crossings of Zrel (corrected_filtered_z)
+    s_z = np.sign(corrected_filtered_z)
+    s_z[~np.isfinite(s_z)] = 0
+    zc_idx = np.where((s_z[:-1] * s_z[1:]) < 0)[0] + 1
+    zc_idx = zc_idx[(zc_idx >= x_min) & (zc_idx <= x_max)]
+    for x0 in zc_idx:
+        fig_rel.add_vline(x=int(x0), line_color='blue', line_dash='dash', opacity=0.4)
+
+    # Points where X and Z velocities are equal (zero-crossings of their difference or near-zero)
+    vel_diff = velocity_corrected_filtered_x - velocity_corrected_filtered_z
+    # Near-zero tolerance for equality
+    equal_zero = np.where(np.isfinite(vel_diff) & (np.abs(vel_diff) <= 1e-6))[0]
+    s_v = np.sign(vel_diff)
+    s_v[~np.isfinite(s_v)] = 0
+    eq_cross = np.where((s_v[:-1] * s_v[1:]) < 0)[0] + 1
+    eq_idx = np.unique(np.concatenate([equal_zero, eq_cross]))
+    eq_idx = eq_idx[(eq_idx >= x_min) & (eq_idx <= x_max)]
+    for x0 in eq_idx:
+        fig_rel.add_vline(x=int(x0), line_color='purple', line_dash='dot', opacity=0.4)
+    # Make position and velocity zero levels align/closer by setting symmetric ranges around zero
+    try:
+        pos_max_abs = np.nanmax([
+            np.nanmax(np.abs(corrected_filtered_x)),
+            np.nanmax(np.abs(corrected_filtered_z)),
+        ])
+    except Exception:
+        pos_max_abs = 1.0
+    if not np.isfinite(pos_max_abs) or pos_max_abs == 0:
+        pos_max_abs = 1.0
+
+    try:
+        vel_max_abs = np.nanmax([
+            np.nanmax(np.abs(velocity_corrected_filtered_x)),
+            np.nanmax(np.abs(velocity_corrected_filtered_z)),
+            np.nanmax(np.abs(velocity_corrected_filtered_xz)),
+            np.nanmax(np.abs(velocity_corrected_filtered_xyz)),
+        ])
+    except Exception:
+        vel_max_abs = 1.0
+    if not np.isfinite(vel_max_abs) or vel_max_abs == 0:
+        vel_max_abs = 1.0
+
+    pos_margin = 1.1
+    vel_margin = 1.1
     fig_rel.update_layout(
         title=animal + ' trial '+str(count_trial)+' - '+paws[p]+' Relative position and velocity signals',
-        xaxis=dict(range=[13100, 14000], title='Frame'),
-        yaxis=dict(range=[-10, 40], title="Position (mm)"),
-        yaxis2=dict(range=[-4, 4], title="Velocity (mm/s)"),
+        xaxis=dict(range=[16900, 17300], title='Frame'),
+        yaxis=dict(range=[-pos_max_abs*pos_margin, pos_max_abs*pos_margin], title="Position (mm)", zeroline=True, zerolinecolor='rgba(0,0,0,0.3)'),
+        yaxis2=dict(range=[-vel_max_abs*vel_margin, vel_max_abs*vel_margin], title="Velocity (mm/s)", zeroline=True, zerolinecolor='rgba(0,0,0,0.3)'),
         showlegend=True
     )
 
+    if manual_track:
+        # Convert to mm first, then compute relative to mean of first 4 paws
+        manual_stance_onset_x_rel = (st_arr[manual_stance_onset_frames, 0] * loco.pixel_to_mm) - np.nanmean(X_interp[:4,:], axis=0)[manual_stance_onset_frames]
+        fig_rel.add_trace(
+            go.Scatter(
+                x=manual_stance_onset_frames,
+                y=manual_stance_onset_x_rel,
+                mode='markers',
+                name='Manual Stance Onset (rel)',
+                marker=dict(symbol='x', color='black', size=10)
+            )
+        )
     fig_rel.show()
     # Save as HTML
     #fig_rel.write_html(os.path.join(loco.path, animal+'_'+paws[p]+'_trial'+str(count_trial)+'_rel_signals.html'))
@@ -331,7 +412,7 @@ for p in range(len(paws)):
                 mode='lines',
                 line=dict(color='green'),
             ))
-    fig_rel.update_layout(
+    fig2.update_layout(
         title=animal + ' trial '+str(count_trial)+' - '+paws[p]+' Trajectories with Velocity Vectors',
         xaxis_title='X Position (mm)',
         yaxis_title='Z Position (mm)',
