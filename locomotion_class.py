@@ -492,11 +492,12 @@ class loco_class:
         wrist_angles = np.arctan(elxz[:,0]/elxz[:,1])+np.arctan(toexz[:,0]/toexz[:,1])
         return body_axis_xy, body_axis_xz, tail_axis_xy, tail_axis_xz, wrist_angles
     
-    def get_sw_st_matrices(self,final_tracks,exclusion):
+    def get_sw_st_matrices(self,final_tracks,exclusion,return_all=False):
         """Computes swing and stance points of a trial from x axis of the bottom view tracking.
         It excludes strides based on a distribution of some gait parameters
         Input: final_tracks (4x5xframes)
                exclusion - boolean to exclude strides 
+               return_all - boolean to return all strides without exclusion, to be used not for gait param computation but more for stride plotting
         Output: st_strides_mat (stridesx2x5)
                 sw_pts_mat (stridesx1x5)
         columns: st/sw in ms; x(st/sw); y(st/sw); z(st/sw); st idx/sw idx
@@ -594,13 +595,16 @@ class loco_class:
                 st_strides_mat_clean.append(st_strides_mat_nan)
             else:
                 st_strides_mat_clean.append(st_strides_mat_new[p])
-            if np.shape(sw_pts_mat_new[p])[0] < 20:
+            if np.shape(sw_pts_mat_new[p])[0] < 20: 
                 sw_pts_mat_nan = np.zeros((1, 1, 5))
                 sw_pts_mat_nan[:] = np.nan
                 sw_pts_mat_clean.append(sw_pts_mat_nan)
             else:
                 sw_pts_mat_clean.append(sw_pts_mat_new[p])
-        return st_strides_mat_clean, sw_pts_mat_clean
+        if return_all:
+            return st_strides_mat_clean, sw_pts_mat_clean, st_strides_mat, sw_pts_mat
+        else:
+            return st_strides_mat_clean, sw_pts_mat_clean
 
     def final_tracks_perctrial(self, final_tracks, bodycenter, perc_division):
         max_samples = np.shape(final_tracks)[2]
