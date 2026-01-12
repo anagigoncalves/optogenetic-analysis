@@ -556,11 +556,20 @@ for p in range(len(paws)):
                     cand = int(zc_idx[ip])
                     closest_zc[i] = cand
                     dist_zc[i] = cand - stf
-            # choose the first speed-equality at or after the stance frame
+            # choose the absolute closest speed-equality (before or after) to the stance frame
             if eq_idx.size:
                 ip2 = np.searchsorted(eq_idx, stf, side='left')
-                if ip2 < eq_idx.size:
-                    cand2 = int(eq_idx[ip2])
+                left = int(eq_idx[ip2 - 1]) if ip2 > 0 else None
+                right = int(eq_idx[ip2]) if ip2 < eq_idx.size else None
+                if (left is not None) and (right is not None):
+                    cand2 = left if abs(stf - left) <= abs(right - stf) else right
+                elif left is not None:
+                    cand2 = left
+                elif right is not None:
+                    cand2 = right
+                else:
+                    cand2 = None
+                if cand2 is not None:
                     closest_eq[i] = cand2
                     dist_eq[i] = cand2 - stf
             # Distance from stance peak to nearest manual stance onset
