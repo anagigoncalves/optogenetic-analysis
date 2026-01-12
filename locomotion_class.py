@@ -40,6 +40,7 @@ class loco_class:
         self.pixel_to_mm = pixel_to_mm
         #self.pixel_to_mm = 1/3.3            # real-time setup
         #self.pixel_to_mm = 1/1.955            # Dana's setup
+        #self.pixel_to_mm = 1/1.98            # Jovin's setup
         self.sr = 333.33 #sampling rate of behavior camera for treadmill
         self.sr_F = 30
         self.my_dpi = 96 #resolution for plotting
