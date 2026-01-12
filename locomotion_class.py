@@ -56,6 +56,9 @@ class loco_class:
         fp = A[~np.isnan(A)]
         x  = np.isnan(A).ravel().nonzero()[0]
         A[np.isnan(A)] = np.interp(x, xp, fp)
+        not_ok = np.sum(np.isnan(A))
+        if not_ok > 0:
+            print('Warning: ' + str(not_ok) + ' NaNs were not interpolated')
         return A
 
     def inpaint_nans_cubic_spline(self, A):
