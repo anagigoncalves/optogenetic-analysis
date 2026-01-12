@@ -138,7 +138,7 @@ floor_offset = 4      # Offset added to Z signal to set floor at zero
 paws = ['FR', 'FL']   # Paws to analyze: 'FR', 'FL', 'HR', 'HL'
 
 # --- Analysis Options ---
-manual_track = False  # If True, load and compare with manual tracking data
+manual_track = True  # If True, load and compare with manual tracking data
 
 # --- Visualization ---
 show_plots = True     # If True, display interactive plots; if False, only save HTML
@@ -303,9 +303,9 @@ for p in range(len(paws)):
     pidx = paw_data[paw]['idx']
     
     # Get precomputed data for this paw
-    data_filt = paw_data[paw]['filt_w5']
+    data_filt_w5 = paw_data[paw]['filt_w5']
     data_filt_w11 = paw_data[paw]['filt_w11_raw']
-    data_filt_w5 = paw_data[paw]['filt_w5_raw']
+    data_filt_w5_raw = paw_data[paw]['filt_w5_raw']
     stance = paw_data[paw]['stance_frames']
     swing = paw_data[paw]['swing_frames']
     st_strides = paw_data[paw]['st_strides_w11']
@@ -350,9 +350,9 @@ for p in range(len(paws)):
     #fig_validation.add_trace(go.Scatter(y=X[p,:], name=paws[p]+' Xraw', line=dict(color='gray')))
     #fig_validation.show()
     # --- Filtered signals and error metrics ---
-    add_line_trace(fig, data_filt, 'X_filtered_swst w5', '#FFB6C1')
+    add_line_trace(fig, data_filt_w5, 'X_filtered_swst w5', '#FFB6C1')
     if manual_track:
-        print_rmse_stats("method 1 (savgol filter, window 5, order 1)", X_interp_manual_corrected, data_filt, compute_abs_area_between_signals)
+        print_rmse_stats("method 1 (savgol filter, window 5, order 1)", X_interp_manual_corrected, data_filt_w5, compute_abs_area_between_signals)
 
     add_line_trace(fig, data_filt_w11, 'X_filtered w11', 'red')
     if manual_track:
@@ -369,8 +369,8 @@ for p in range(len(paws)):
         print_rmse_stats("method 2 (retracked savgol filter, window 11, order 1)", X_interp_manual_corrected, filt_retracked_w11, compute_abs_area_between_signals)
 
     # --- Stance/Swing detection markers from peak finding ---
-    add_marker_trace(fig, stance, data_filt[stance], 'Stance Onset peak w5', 'square', 'orange')
-    add_marker_trace(fig, swing, data_filt[swing], 'Swing Onset trough w5', 'square', 'green')
+    add_marker_trace(fig, stance, data_filt_w5[stance], 'Stance Onset peak w5', 'square', 'orange')
+    add_marker_trace(fig, swing, data_filt_w5[swing], 'Swing Onset trough w5', 'square', 'green')
 
     # --- Stride markers from matrices (w11) ---
     if st_strides_mat_w11 is not None and sw_pts_mat_w11 is not None:
@@ -390,8 +390,8 @@ for p in range(len(paws)):
                           '', 'w5', 'magenta', 'darkgreen', 'diamond-open', 'diamond')
 
     # --- Spline-based markers (same as stance/swing since computed on same data_filt) ---
-    add_marker_trace(fig, stance, data_filt[stance], 'Stance Onset on filtered interp spline', 'star-open', 'orange', size=10)
-    add_marker_trace(fig, swing, data_filt[swing], 'Swing Onset on filtered interp spline', 'star-open', 'green', size=10)
+    add_marker_trace(fig, stance, data_filt_w5[stance], 'Stance Onset on filtered interp spline', 'star-open', 'orange', size=10)
+    add_marker_trace(fig, swing, data_filt_w5[swing], 'Swing Onset on filtered interp spline', 'star-open', 'green', size=10)
 
     # --- Additional filtering methods for comparison ---
     filt_w50 = savgol_filter(X_interp[pidx,:], window_length=50, polyorder=3)
@@ -452,7 +452,7 @@ for p in range(len(paws)):
     # Preserve tracks for overlay
     if paw == overlay_paw:
         raw_track = deepcopy(X_raw[pidx, :])
-        filtered_x_for_overlay = deepcopy(data_filt)
+        filtered_x_for_overlay = deepcopy(data_filt_w5)
         corrected_x_for_overlay = deepcopy(X_interp_spline[pidx,:]) if 'corrected_x' in locals() else None
 
     # =========================================================================
@@ -475,7 +475,7 @@ for p in range(len(paws)):
     
     # Add position traces
     add_line_trace(fig2, X_interp[pidx,:], f'{paw} Xraw_interp', 'black')
-    add_line_trace(fig2, data_filt, 'X_filtered_swst w5', '#FFB6C1')
+    add_line_trace(fig2, data_filt_w5, 'X_filtered_swst w5', '#FFB6C1')
     add_line_trace(fig2, savgol_filter(Z_interp[pidx,:], window_length=5, polyorder=1), 'Z_filtered w5', '#209ECF')
     add_line_trace(fig2, rel_z_filt, 'Z relative', '#209ECF', dash='dot')
     
