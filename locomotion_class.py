@@ -496,7 +496,7 @@ class loco_class:
         wrist_angles = np.arctan(elxz[:,0]/elxz[:,1])+np.arctan(toexz[:,0]/toexz[:,1])
         return body_axis_xy, body_axis_xz, tail_axis_xy, tail_axis_xz, wrist_angles
     
-    def get_sw_st_matrices(self,final_tracks,exclusion,return_all=False):
+    def get_sw_st_matrices(self,final_tracks,exclusion,wl=11,return_all=False):
         """Computes swing and stance points of a trial from x axis of the bottom view tracking.
         It excludes strides based on a distribution of some gait parameters
         Input: final_tracks (4x5xframes)
@@ -517,7 +517,7 @@ class loco_class:
         swing_mat = []
         stance_mat = []
         for p in range(4):
-            data_filt = savgol_filter(X[p,:], window_length = 11, polyorder = 1)
+            data_filt = savgol_filter(X[p,:], window_length = wl, polyorder = 1)
             peaks = find_peaks(data_filt)
             throughs = find_peaks(-data_filt)
             stance = peaks[0]
@@ -544,7 +544,10 @@ class loco_class:
                 sw_pts[s,:,3] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),3][0]
                 sw_pts[s,:,4] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),4][0]
             st_strides_mat.append(st_strides)
-            sw_pts_mat.append(sw_pts)            
+            sw_pts_mat.append(sw_pts)   
+        import copy
+        st_strides_mat_before_exclusion = copy.deepcopy(st_strides_mat)
+        sw_pts_mat_before_exclusion = copy.deepcopy(sw_pts_mat)
         if exclusion:
             #compute some gait parameters
             stride_duration_mat = []
@@ -590,6 +593,26 @@ class loco_class:
             st_strides_mat_new = st_strides_mat
             sw_pts_mat_new = sw_pts_mat
         #check if there are enough strides detected
+        st_strides_mat_clean = []
+        sw_pts_mat_clean = []
+        for p in range(4):
+            if np.shape(st_strides_mat_new[p])[0] < 20:
+                st_strides_mat_nan = np.zeros((1, 2, 5))
+                st_strides_mat_nan[:] = np.nan
+                st_strides_mat_clean.append(st_strides_mat_nan)
+            else:
+                st_strides_mat_clean.append(st_strides_mat_new[p])
+            if np.shape(sw_pts_mat_new[p])[0] < 20: 
+                sw_pts_mat_nan = np.zeros((1, 1, 5))
+                sw_pts_mat_nan[:] = np.nan
+                sw_pts_mat_clean.append(sw_pts_mat_nan)
+            else:
+                sw_pts_mat_clean.append(sw_pts_mat_new[p])
+            print('Paw %d: %d stance and %d swing after exclusion' %(p+1,np.shape(st_strides_mat_clean[p])[0],np.shape(sw_pts_mat_clean[p])[0]))
+        if return_all:
+            return st_strides_mat_clean, sw_pts_mat_clean, st_strides_mat_before_exclusion, sw_pts_mat_before_exclusion
+        else:
+            return st_strides_mat_clean, sw_pts_mat_clean
         st_strides_mat_clean = []
         sw_pts_mat_clean = []
         for p in range(4):
