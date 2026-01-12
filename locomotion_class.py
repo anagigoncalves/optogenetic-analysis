@@ -986,6 +986,20 @@ class loco_class:
         #compute gait parameters
         p_sl = np.array([2, 3, 0, 1]) #paw order for contralateral paw
         param_mat = []
+        # helper to safely index arrays with potential NaN frame indices
+        def safe_index(arr, idx_array):
+            """Return values arr[idx_array] but keep NaNs where idx_array has NaN.
+            idx_array: 1D array of frame indices (may contain NaN)
+            arr: 1D array
+            Output: array same length as idx_array with NaNs preserved."""
+            out = np.zeros(len(idx_array))
+            out[:] = np.nan
+            if len(idx_array) == 0:
+                return out
+            valid_mask = np.isfinite(idx_array)
+            if np.any(valid_mask):
+                out[valid_mask] = arr[idx_array[valid_mask].astype(int)]
+            return out
         for p in range(4):
             if param == 'stride_duration':
                 param_mat.append(st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0])
@@ -994,11 +1008,17 @@ class loco_class:
             if param == 'stance_duration':
                 param_mat.append(sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0])
             if param == 'swing_length':
-                param_mat.append(X_interp[p,st_strides_mat[p][:,1,4].astype(int)]-X_interp[p,sw_pts_mat[p][:,0,4].astype(int)])
+                end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
+                sw_vals = safe_index(X_interp[p,:], sw_pts_mat[p][:,0,4])
+                param_mat.append(end_vals - sw_vals)
             if param == 'swing_velocity':
-                param_mat.append((X_interp[p,st_strides_mat[p][:,1,4].astype(int)]-X_interp[p,sw_pts_mat[p][:,0,4].astype(int)])/(st_strides_mat[p][:,1,0]-sw_pts_mat[p][:,0,0]))
+                end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
+                sw_vals = safe_index(X_interp[p,:], sw_pts_mat[p][:,0,4])
+                param_mat.append((end_vals - sw_vals)/(st_strides_mat[p][:,1,0]-sw_pts_mat[p][:,0,0]))
             if param == 'swinglength_rel':
-                param_mat.append(paws_rel[p][st_strides_mat[p][:,1,4].astype(int)]-paws_rel[p][st_strides_mat[p][:,0,4].astype(int)])
+                rel_end = safe_index(paws_rel[p], st_strides_mat[p][:,1,4])
+                rel_start = safe_index(paws_rel[p], st_strides_mat[p][:,0,4])
+                param_mat.append(rel_end - rel_start)
             if param == 'stance_speed':
                 param_mat.append((sw_pts_mat[p][:,0,1]-st_strides_mat[p][:,0,1])/
                                   (sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0]))
@@ -1007,34 +1027,53 @@ class loco_class:
             if param == 'body_center_x_stride':
                 bodycenter_stride = np.zeros((np.shape(st_strides_mat[p])[0]))
                 for s in range(np.shape(st_strides_mat[p])[0]):
-                    bodycenter_stride[s] = np.nanmean(bodycenter_x[st_strides_mat[p][s,0,4].astype(int):st_strides_mat[p][s,1,4].astype(int)])
+                    beg = st_strides_mat[p][s,0,4]
+                    end = st_strides_mat[p][s,1,4]
+                    if np.isfinite(beg) and np.isfinite(end):
+                        bodycenter_stride[s] = np.nanmean(bodycenter_x[int(beg):int(end)])
+                    else:
+                        bodycenter_stride[s] = np.nan
                 param_mat.append(bodycenter_stride) 
             if param == 'body_speed_x':
                 bodyspeed = np.zeros((np.shape(st_strides_mat[p])[0]))
                 for s in range(np.shape(st_strides_mat[p])[0]):
-                    space_beg = bodycenter_x[st_strides_mat[p][s,0,4].astype(int)]*self.pixel_to_mm
-                    space_end = bodycenter_x[st_strides_mat[p][s,1,4].astype(int)]*self.pixel_to_mm
-                    bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    beg = st_strides_mat[p][s,0,4]
+                    end = st_strides_mat[p][s,1,4]
+                    if np.isfinite(beg) and np.isfinite(end):
+                        space_beg = bodycenter_x[int(beg)]*self.pixel_to_mm
+                        space_end = bodycenter_x[int(end)]*self.pixel_to_mm
+                        bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    else:
+                        bodyspeed[s] = np.nan
                 param_mat.append(bodyspeed)
             if param == 'duty_factor':
                 param_mat.append((sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0])/(st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0])*100)  
             if param == 'cadence':
                 param_mat.append(1/(st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0]))    
             if param == 'coo':
-                param_mat.append(np.nanmean(np.column_stack((paws_rel[p][st_strides_mat[p][:,0,4].astype(int)],paws_rel[p][sw_pts_mat[p][:,0,4].astype(int)])),axis=1))   
+                stance_vals = safe_index(paws_rel[p], st_strides_mat[p][:,0,4])
+                swing_vals = safe_index(paws_rel[p], sw_pts_mat[p][:,0,4])
+                param_mat.append(np.nanmean(np.column_stack((stance_vals, swing_vals)),axis=1))   
             if param == 'coo_stance':
-                param_mat.append(paws_rel[p][st_strides_mat[p][:,0,4].astype(int)])    
+                param_mat.append(safe_index(paws_rel[p], st_strides_mat[p][:,0,4]))    
             if param == 'coo_swing':
-                param_mat.append(paws_rel[p][sw_pts_mat[p][:,0,4].astype(int)])      
+                param_mat.append(safe_index(paws_rel[p], sw_pts_mat[p][:,0,4]))      
             if param == 'body_speed_x_cv':
                 bodyspeed = np.zeros((np.shape(st_strides_mat[p])[0]))
                 for s in range(np.shape(st_strides_mat[p])[0]):
-                    space_beg = bodycenter_x[st_strides_mat[p][s,0,4].astype(int)]*self.pixel_to_mm
-                    space_end = bodycenter_x[st_strides_mat[p][s,1,4].astype(int)]*self.pixel_to_mm
-                    bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    beg = st_strides_mat[p][s,0,4]
+                    end = st_strides_mat[p][s,1,4]
+                    if np.isfinite(beg) and np.isfinite(end):
+                        space_beg = bodycenter_x[int(beg)]*self.pixel_to_mm
+                        space_end = bodycenter_x[int(end)]*self.pixel_to_mm
+                        bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    else:
+                        bodyspeed[s] = np.nan
                 param_mat.append(np.nanstd(bodyspeed)/np.nanmean(bodyspeed))
             if param == 'step_length':
-                param_mat.append(X_interp[p,st_strides_mat[p][:,0,4].astype(int)]-X_interp[p_sl[p],st_strides_mat[p][:,0,4].astype(int)])   
+                stance_vals_p = safe_index(X_interp[p,:], st_strides_mat[p][:,0,4])
+                stance_vals_contra = safe_index(X_interp[p_sl[p],:], st_strides_mat[p][:,0,4])
+                param_mat.append(stance_vals_p - stance_vals_contra)   
             if param == 'double_support':
                 ds = np.zeros((np.shape(st_strides_mat[p])[0]))
                 ds[:] = np.nan
