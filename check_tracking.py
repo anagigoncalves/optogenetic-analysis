@@ -461,9 +461,9 @@ for p in range(len(paws)):
     fig2 = make_subplots(specs=[[{"secondary_y": True}]])
     
     # Filtered position signals
-    x_filt = data_filt
-    y_filt = savgol_filter(Y_interp[pidx,:], window_length=5, polyorder=1)
-    z_filt = savgol_filter(Z_interp[pidx,:], window_length=5, polyorder=1)
+    x_filt = data_filt_w11
+    y_filt = savgol_filter(Y_interp[pidx,:], window_length=11, polyorder=1)
+    z_filt = savgol_filter(Z_interp[pidx,:], window_length=11, polyorder=1)
     rel_z_filt = z_filt + loco.floor
     
     # Speed signals
