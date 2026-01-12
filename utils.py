@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from scipy.interpolate import CubicSpline
 
 def rename_files(folder_path, old_char, new_char):
     ''' 
@@ -82,3 +83,124 @@ def compute_abs_area_between_signals(signal1, signal2):
         return np.nan  # No valid overlap
     area = np.trapz(signal1[valid] - signal2[valid])
     return np.abs(area)
+
+
+def count_zeros(arr):
+    """Return (n_zeros, n_finite) for any array-like input (supports ragged arrays).
+    Handles:
+    - None or empty → (0, 0)
+    - Homogeneous ndarrays → direct vectorized ops
+    - Ragged/nested lists of arrays → recursively flatten numeric values
+    """
+    if arr is None:
+        return 0, 0
+    # Fast path: proper ndarray with numeric dtype
+    if isinstance(arr, np.ndarray) and arr.dtype != object:
+        a = arr
+        if a.size == 0:
+            return 0, 0
+        finite = np.isfinite(a)
+        zeros = np.sum((a == 0) & finite)
+        return int(zeros), int(np.sum(finite))
+
+    # Slow path: ragged or nested sequences → flatten numeric scalars
+    def _iter_numeric(x):
+        if isinstance(x, (list, tuple)):
+            for xi in x:
+                yield from _iter_numeric(xi)
+        elif isinstance(x, np.ndarray):
+            if x.dtype == object:
+                # iterate elements (could be nested)
+                for xi in x:
+                    yield from _iter_numeric(xi)
+            else:
+                for xi in x.ravel():
+                    yield xi
+        else:
+            # Try to treat as numeric scalar
+            try:
+                yield float(x)
+            except Exception:
+                # skip non-numeric
+                return
+
+    flat_vals = np.array(list(_iter_numeric(arr)), dtype=float)
+    if flat_vals.size == 0:
+        return 0, 0
+    finite = np.isfinite(flat_vals)
+    zeros = np.sum((flat_vals == 0.0) & finite)
+    return int(zeros), int(np.sum(finite))
+
+
+def correct_signal_cubic_spline(signal, dt, thr_sig='speed'):
+    """Correct a 1D signal using cubic spline interpolation after outlier detection.
+    thr_sig: 'speed' (default) or 'acceleration' for thresholding.
+    Returns (speed, acceleration, signal_without_outliers, corrected_signal).
+    """
+    time = np.arange(len(signal)) * dt
+    speed = np.diff(signal, prepend=signal[0])
+    acceleration = np.diff(speed, prepend=speed[0]) / dt
+
+    if thr_sig == 'speed':
+        s_std = np.nanstd(speed)
+        s_thresh = 3 * s_std
+        outliers_speed = np.abs(speed) > s_thresh
+        constant_speed = np.abs(np.diff(speed, prepend=speed[0])) == 0
+        constant_speed_outliers = np.convolve(constant_speed, np.ones(5, dtype=int), mode='same') >= 5
+        outliers = outliers_speed | constant_speed_outliers
+    elif thr_sig == 'acceleration':
+        a_std = np.nanstd(acceleration)
+        a_thresh = 3 * a_std
+        outliers = np.abs(acceleration) > a_thresh
+    else:
+        outliers = np.zeros_like(speed, dtype=bool)
+
+    buffer = 5
+    outlier_idx = np.where(outliers)[0]
+    for idx in outlier_idx:
+        outliers[max(0, idx - buffer):min(len(outliers), idx + buffer + 1)] = True
+
+    good_idx = ~outliers
+    signal_without_outliers = signal.copy()
+    signal_without_outliers[~good_idx] = np.nan
+
+    valid_idx = ~np.isnan(signal[good_idx])
+    valid_time = time[good_idx][valid_idx]
+    valid_signal = signal[good_idx][valid_idx]
+
+    if len(valid_signal) > 0:
+        cs = CubicSpline(valid_time, valid_signal, bc_type='clamped')
+        corrected_signal = cs(time)
+    else:
+        corrected_signal = signal.copy()
+
+    return speed, acceleration, signal_without_outliers, corrected_signal
+
+
+def extract_paw_vec(ds_arr, idx):
+    """Extract paw vector at index idx from ds_arr supporting 2D or 1D(object) shapes."""
+    try:
+        a = np.asarray(ds_arr)
+        if a.ndim == 2:
+            vec = np.asarray(a[idx, :], dtype=float)
+        else:
+            vec = np.asarray(ds_arr[idx], dtype=float)
+    except Exception:
+        try:
+            vec = np.asarray(ds_arr[idx], dtype=float)
+        except Exception:
+            vec = np.array([], dtype=float)
+    vec = np.where(np.isfinite(vec), vec, np.nan).astype(float)
+    return vec
+
+
+def stride_bounds(mat, paw_idx):
+    """Return stride start/end frame indices for a given paw from stride matrices."""
+    try:
+        arr = np.asarray(mat[paw_idx])
+        starts = arr[:, 0, 4].astype(float)
+        ends = arr[:, 1, 4].astype(float)
+        mask = np.isfinite(starts) & np.isfinite(ends)
+        return starts[mask].astype(int), ends[mask].astype(int)
+    except Exception:
+        return np.array([], dtype=int), np.array([], dtype=int)
