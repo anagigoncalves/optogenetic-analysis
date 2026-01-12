@@ -1,3 +1,58 @@
+"""
+Video Gold Standard Annotation Tool
+====================================
+
+A GUI application for manually annotating video frames to create gold standard 
+ground truth data for tracking validation.
+
+Purpose:
+--------
+This tool allows users to manually select and mark specific anatomical points 
+(e.g., paw positions, stance/swing onsets) frame-by-frame in video recordings.
+The annotated coordinates serve as ground truth for validating automated 
+tracking algorithms.
+
+Features:
+---------
+- Load video files (MP4, AVI, MOV formats)
+- Navigate through frames using arrow keys (Left/Right or A/D)
+- Select point type from predefined options:
+    * FRbottom, FLbottom: Front right/left paw bottom positions
+    * FRz, FLz: Front right/left Z coordinates
+    * FRbottom_validation: Validation points for front right paw
+    * STonset: Stance onset frames
+    * SWonset: Swing onset frames
+- Click on video frame to mark the selected point type
+- Points are saved as NumPy arrays (.npy) with shape (n_frames, 2)
+
+Usage:
+------
+1. Run the script to open the GUI
+2. Select the point type you want to annotate from the dropdown
+3. Click "Load Video" to open a video file
+4. Navigate frames with Left/Right arrow keys (or A/D)
+5. Click on the video to mark the current point location
+6. Press 'Q' or 'Esc' to save and close the video
+7. Output file is saved as: <video_name>_<point_type>_points.npy
+
+Controls:
+---------
+- Left Arrow / A: Previous frame
+- Right Arrow / D: Next frame
+- Left Click: Mark point at cursor position
+- Q / Esc: Save points and close video
+
+Dependencies:
+-------------
+- cv2 (OpenCV)
+- tkinter
+- numpy
+- keyboard
+
+Author: Alice Geminiani, Copilot ChatGPT-5
+Date: 2024
+"""
+
 import cv2
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
@@ -122,7 +177,7 @@ point_label = tk.Label(root, text="Select Point Type:")
 point_label.pack(pady=5)
 
 point_combo = ttk.Combobox(root, textvariable=point_type, 
-                          values=["FRbottom", "FLbottom", "FRz", "FLz", "FRbottom_validation"],
+                          values=["FRbottom", "FLbottom", "FRz", "FLz", "FRbottom_validation", "STonset", "SWonset"],
                           state="readonly")
 point_combo.pack(pady=5)
 
