@@ -42,6 +42,17 @@ num_trials = 28
 num_resamples = 360
 sf = 330        # [Hz] sampling frequency of the camera
 time_range = [-200, 200]        # [ms] time range we are going to look at (single stride plots, histograms, etc.)
+
+# Laser color scheme based on experiment type
+if 'JAWS' in path:
+    laser_color_stride_plot = 'yellow'
+    onset_face, onset_edge = 'lightyellow', 'yellow'
+    offset_face, offset_edge = 'orange', 'darkorange'
+else:
+    laser_color_stride_plot = 'blue'
+    onset_face, onset_edge = 'lightskyblue', 'royalblue'
+    offset_face, offset_edge = 'blue', 'darkblue'
+
 otrack_class = online_tracking_class.otrack_class(path)
 loco = locomotion_class.loco_class(path)
 folder_name = 'kinematics_laser_timing'
@@ -306,10 +317,6 @@ for count_animal, animal in enumerate(included_animal_list):
                 plt.imshow(padded_positions, aspect='auto', cmap='gray', 
                            extent=[min_time, max_time, 0, len(padded_positions)], origin='lower', vmin=0, vmax=40)
                 # Add shaded areas between onset and offset times of laser
-                if 'JAWS' in path:
-                    laser_color_stride_plot = 'yellow'
-                else:
-                    laser_color_stride_plot = 'blue'
                 for t in range(len(stride_times)):
                     if stride_laser_onsets[t] is not None and stride_laser_offsets[t] is not None:
                         plt.fill_betweenx(
@@ -362,14 +369,7 @@ for count_animal, animal in enumerate(included_animal_list):
             max_edge = max(np.nanmax(selected_onsets), np.nanmax(selected_offsets))
             nbins = np.arange(min_edge, max_edge + bin_width, bin_width)
 
-            if 'JAWS' in path:
-                color_laser = 'orange'
-            else:
-                color_laser = 'blue'
-            ax1.hist(stride_onsets, bins=nbins, alpha=0.3, label='Stride Onsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
-            ax1.hist(stride_offsets, bins=nbins, alpha=0.6, label='Stride Offsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
-            ax1.hist(selected_onsets, bins=nbins, alpha=0.3, label='Laser Onsets', color=color_laser, edgecolor='dark'+color_laser)
-            ax1.hist(selected_offsets, bins=nbins, alpha=0.6, label='Laser Offsets', color=color_laser, edgecolor='dark'+color_laser)
+            ax1.hist(selected_stride_onsets, bins=nbins, alpha=0.3, label='Stride Onsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
             ax1.axvline(x=0, color=paw_colors[paw], linestyle='--', linewidth=1, label=center + ' onset')
             ax1.axvline(x=np.nanmedian(selected_onsets), color=color_laser, linestyle='-', linewidth=2, label='Med Onset')
             ax1.axvline(x=np.nanmedian(selected_offsets), color='dark'+color_laser, linestyle='-', linewidth=2, label='Med Offset')
