@@ -86,6 +86,7 @@ for paw in paw_names:
         
 # FOR EACH SESSION AND ANIMAL EXTRACT PAW POSITIONS in 3D
 for count_animal, animal in enumerate(included_animal_list):
+    print('Processing ' + animal)
     session = int(session_list[count_animal])
     trials = otrack_class.get_trials(animal)
     # Initialize dictionaries to store the resampled trajectories for each paw and axis
@@ -99,6 +100,12 @@ for count_animal, animal in enumerate(included_animal_list):
     filelist = loco.get_track_files(animal, session)
 
     # LOAD PROCESSED DATA
+    # Check first if the current animal has processed files
+    print(os.path.join(path, 'processed files', animal))
+    if not os.path.exists(os.path.join(path, 'processed files', animal)):
+       print(f"No processed files found for {animal}. Skipping...")
+       continue
+
     [otracks, otracks_st, otracks_sw, offtracks_st, offtracks_sw, timestamps_session, laser_on] = otrack_class.load_processed_files(animal)
 
     for paw in range(len(paw_names)):       # For each paw
