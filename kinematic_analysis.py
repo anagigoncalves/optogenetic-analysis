@@ -295,23 +295,40 @@ for count_animal, animal in enumerate(included_animal_list):
                 min_time = np.min([np.min(times) for times in stride_times])
                 max_time = np.max([np.max(times) for times in stride_times])
 
+                # Expected number of samples in the output window
+                expected_samples = int((time_range[1] - time_range[0]) / (1000/sf))
+
                 for s in range(len(stride_times)):
-                    to_add_before = (np.min(stride_times[s]) - min_time)/(1000/sf)
-                    to_add_after = (max_time - np.max(stride_times[s]))/(1000/sf)
-                    stride_times[s] = np.pad(stride_times[s], (int(np.ceil(to_add_before)), int(np.ceil(to_add_after))), constant_values=np.nan)
+                    # Pad to align all strides to the same global time range
+                    to_add_before = int(np.ceil((np.min(stride_times[s]) - min_time) / (1000/sf)))
+                    to_add_after = int(np.ceil((max_time - np.max(stride_times[s])) / (1000/sf)))
+                    
+                    stride_times[s] = np.pad(stride_times[s], (to_add_before, to_add_after), constant_values=np.nan)
+                    stride_positions[s] = np.pad(stride_positions[s], (to_add_before, to_add_after), constant_values=np.nan)
+                    
+                    # Find index of time=0 (center point)
                     idx_zero = np.nanargmin(np.abs(stride_times[s]))
-                    start_idx = idx_zero + int(time_range[0]/(1000/sf))
-                    end_idx = idx_zero + int(time_range[1]/(1000/sf))
-                    stride_positions[s] = np.pad(stride_positions[s], (int(np.ceil(to_add_before)), int(np.ceil(to_add_after))), constant_values=np.nan)
-                    # Get slice with padding and trimming
-                    positions_padded_trimmed = np.pad(stride_positions[s], 
-                                        (abs(min(0, start_idx)), max(0, end_idx - len(stride_positions[s]))),
-                                        constant_values=np.nan)[max(0, start_idx):end_idx+abs(min(0, start_idx))]
-                    times_padded_trimmed = np.pad(stride_times[s], 
-                                        (abs(min(0, start_idx)), max(0, end_idx - len(stride_positions[s]))),
-                                        constant_values=np.nan)[max(0, start_idx):end_idx+abs(min(0, start_idx))]
+                    
+                    # Calculate window indices
+                    start_idx = idx_zero + int(time_range[0] / (1000/sf))
+                    end_idx = idx_zero + int(time_range[1] / (1000/sf))
+                    
+                    # Extract window with proper boundary handling
+                    n = len(stride_times[s])
+                    pad_before = max(0, -start_idx)
+                    pad_after = max(0, end_idx - n)
+                    actual_start = max(0, start_idx)
+                    actual_end = min(n, end_idx)
+                    
+                    times_slice = stride_times[s][actual_start:actual_end]
+                    positions_slice = stride_positions[s][actual_start:actual_end]
+                    
+                    times_padded_trimmed = np.pad(times_slice, (pad_before, pad_after), constant_values=np.nan)
+                    positions_padded_trimmed = np.pad(positions_slice, (pad_before, pad_after), constant_values=np.nan)
+                    
                     trimmed_stride_times.append(times_padded_trimmed)
                     trimmed_stride_positions.append(positions_padded_trimmed)
+                
                 # Determine the maximum length of all strides
                 max_length = max(len(pos) for pos in stride_positions)
 
@@ -365,28 +382,35 @@ for count_animal, animal in enumerate(included_animal_list):
     
 
             # Histograms of stride laser onsets and offsets
-            from itertools import chain
             if hist_all:
                 selected_onsets = list(chain.from_iterable(stride_laser_onsets_all_trials))   
                 selected_offsets =  list(chain.from_iterable(stride_laser_offsets_all_trials)) 
                 selected_positions = list(chain.from_iterable(positions_all_stim_trials)) 
+                selected_stride_onsets = list(chain.from_iterable(stride_onsets_all_trials))   
+                selected_stride_offsets =  list(chain.from_iterable(stride_offsets_all_trials)) 
             else:
                 selected_onsets = list(chain.from_iterable(stride_laser_onsets_all_trials[:3]))  # Select the first 3 trials
                 selected_offsets = list(chain.from_iterable(stride_laser_offsets_all_trials[:3]))  # Select the first 3 trials
                 selected_positions = list(chain.from_iterable(positions_all_stim_trials[:3]))  # Select the first 3 trials
+                selected_stride_onsets = list(chain.from_iterable(stride_onsets_all_trials[:3]))  # Select the first 3 trials
+                selected_stride_offsets =  list(chain.from_iterable(stride_offsets_all_trials[:3])) 
 
             fig, ax1 = plt.subplots(figsize=(14, 8))
             bin_width = 5
-            min_edge = min(np.nanmin(selected_onsets), np.nanmin(selected_offsets))
-            max_edge = max(np.nanmax(selected_onsets), np.nanmax(selected_offsets))
+            min_edge = min(np.nanmin(selected_onsets), np.nanmin(selected_offsets), np.nanmin(selected_stride_onsets), np.nanmin(selected_stride_offsets))
+            max_edge = max(np.nanmax(selected_onsets), np.nanmax(selected_offsets), np.nanmax(selected_stride_onsets), np.nanmax(selected_stride_offsets))
             nbins = np.arange(min_edge, max_edge + bin_width, bin_width)
 
             ax1.hist(selected_stride_onsets, bins=nbins, alpha=0.3, label='Stride Onsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
+            ax1.hist(selected_stride_offsets, bins=nbins, alpha=0.6, label='Stride Offsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
+            if not plot_only_off:
+                ax1.hist(selected_onsets, bins=nbins, alpha=0.6, label='Laser Onsets', color=onset_face, edgecolor=onset_edge)
+                ax1.axvline(x=np.nanmedian(selected_onsets), color=onset_edge, linestyle='-', linewidth=2, label='Med Onset')
+            ax1.hist(selected_offsets, bins=nbins, alpha=0.6, label='Laser Offsets', color=offset_face, edgecolor=offset_edge)
             ax1.axvline(x=0, color=paw_colors[paw], linestyle='--', linewidth=1, label=center + ' onset')
-            ax1.axvline(x=np.nanmedian(selected_onsets), color=color_laser, linestyle='-', linewidth=2, label='Med Onset')
-            ax1.axvline(x=np.nanmedian(selected_offsets), color='dark'+color_laser, linestyle='-', linewidth=2, label='Med Offset')
-            ax1.axvline(x=np.nanmedian(stride_onsets), color=paw_colors[paw], linestyle='-', linewidth=2)
-            ax1.axvline(x=np.nanmedian(stride_offsets), color='darkred', linestyle='-', linewidth=2)
+            ax1.axvline(x=np.nanmedian(selected_offsets), color=offset_edge, linestyle='-', linewidth=2, label='Med Offset')
+            ax1.axvline(x=np.nanmedian(selected_stride_onsets), color=paw_colors[paw], linestyle='-', linewidth=2)
+            ax1.axvline(x=np.nanmedian(selected_stride_offsets), color='darkred', linestyle='-', linewidth=2)
             ax1.set_xlabel('Time (ms)', fontsize=14)
             ax1.set_ylabel('Frequency', fontsize=14)
             ax1.set_xlim(time_range[0], time_range[1])
@@ -395,10 +419,15 @@ for count_animal, animal in enumerate(included_animal_list):
 
             # Add avg trajectory
             if hist_all:
-                avg_trajectory = np.nanmean(np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials))),axis=0) 
-                std_trajectory = np.nanstd(np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials))),axis=0)
-                avg_time = np.nanmean(np.array(list(chain.from_iterable(trimmed_times_all_stim_trials))),axis=0)
+                selected_trajectories = np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials)))
+                selected_times = np.array(list(chain.from_iterable(trimmed_times_all_stim_trials)))
             else:
+                selected_trajectories = np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials[:3])))
+                selected_times = np.array(list(chain.from_iterable(trimmed_times_all_stim_trials[:3])))
+
+            avg_trajectory = np.nanmean(selected_trajectories,axis=0) 
+            std_trajectory = np.nanstd(selected_trajectories,axis=0)
+            avg_time = np.nanmean(selected_times,axis=0)
             with open(_win_safe_path(animal+"_avg_trajectory_data.pkl"), "wb") as f:
                 pickle.dump({
                     "avg_trajectory": avg_trajectory,
