@@ -36,9 +36,27 @@ sf = 330        # [Hz] sampling frequency of the camera
 time_range = [-200, 200]        # [ms] time range we are going to look at (single stride plots, histograms, etc.)
 otrack_class = online_tracking_class.otrack_class(path)
 loco = locomotion_class.loco_class(path)
-path_save = path + '\\kinematics\\'+center+'_centered_force_center'+str(force_center)+'\\'
-if not os.path.exists(path_save):
-    os.mkdir(path_save)
+folder_name = 'kinematics_laser_timing'
+# Build paths with os.path.join and ensure directories exist
+def _win_safe_path(p: str) -> str:
+    """Prefix Windows paths with \\?\ to avoid MAX_PATH issues when length is large."""
+    try:
+        # Only apply on Windows
+        if os.name == 'nt':
+            p_norm = os.path.normpath(p)
+            if len(p_norm) > 240 and not p_norm.startswith('\\\\?\\'):
+                return '\\\\?\\' + p_norm
+            return p_norm
+        return p
+    except Exception:
+        return p
+
+base_output_dir = os.path.join(path, folder_name)
+path_save = os.path.join(
+    base_output_dir,
+    f"{center}_centered_force_center{force_center}_OFFtoON{plot_off_to_on}"
+)
+os.makedirs(_win_safe_path(path_save), exist_ok=True)
 print("Analysing..........................", path)
 
 
