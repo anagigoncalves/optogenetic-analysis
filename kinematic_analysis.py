@@ -106,6 +106,10 @@ for paw in paw_names:
     for axis in to_plot:        avg_traj_resampled_all_trials_all_animals[paw][axis] = np.full((len(animal_list), num_trials, num_resamples), np.nan) 
         
 # FOR EACH SESSION AND ANIMAL EXTRACT PAW POSITIONS in 3D
+stride_onsets_all_trials_all_animals = []        # List to store stride onsets for each trial for all animals
+stride_offsets_all_trials_all_animals = []        # List to store stride offsets for each trial for all animals
+stride_laser_onsets_all_trials_all_animals = []        # List to store stride laser onsets for each trial for all animals
+stride_laser_offsets_all_trials_all_animals = []        # List to store stride laser offsets for each trial for all animals
 for count_animal, animal in enumerate(included_animal_list):
     print('Processing ' + animal)
     session = int(session_list[count_animal])
@@ -445,13 +449,21 @@ for count_animal, animal in enumerate(included_animal_list):
             hv_file = os.path.join(path_save, f"{animal}_stacked_stride_positions_with_high_peak_velocity_all_trials{hist_all}first_tied.png")
             fig_all_trajectories.savefig(_win_safe_path(hv_file), bbox_inches='tight', dpi=300)
             # Plot the average of all trials for each animal, paw and axis
-            # kinematic_functions.plot_resampled_position_all_trials(traj_resampled_all_trials[paw_names[paw]][axis], axis, paw_names[paw], animal, path_save, center=center, force_center=force_center)
+#            kinematic_functions.plot_resampled_position_all_trials(traj_resampled_all_trials[paw_names[paw]][axis], axis, paw_names[paw], animal, path_save, center=center, force_center=force_center)
 
 
-            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(28)), path_save, center=center, force_center=force_center)
-            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9)), path_save, center=center, force_center=force_center)
-            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9,19)), path_save, center=center, force_center=force_center)
-            kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(19,28)), path_save, center=center, force_center=force_center)
+     #       kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(28)), path_save, center=center, force_center=force_center)
+     #       kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9)), path_save, center=center, force_center=force_center)
+     #       kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(9,19)), path_save, center=center, force_center=force_center)
+       #     kinematic_functions.plot_resampled_position_avg_all(avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis], axis, paw_names[paw], list(range(19,28)), path_save, center=center, force_center=force_center)
+
+    stride_onsets_all_trials_all_animals.append(selected_stride_onsets)        # Append stride onsets for the current animal
+    stride_offsets_all_trials_all_animals.append(selected_stride_offsets)        # Append stride offsets for the current animal
+    stride_laser_onsets_all_trials_all_animals.append(selected_onsets)        # Append stride laser onsets for the current animal
+    stride_laser_offsets_all_trials_all_animals.append(selected_offsets)        # Append stride laser offsets for the current animal
+    print("Finished analysing animal", animal)
+    gc.collect()  # Clear memory after each animal to avoid memory issues
+    
 
 # Do histograms of stride and laser onsets and offsets for all animals
 paw=0               # To make flexible for managing multiple paws, but currently only one paw is used
