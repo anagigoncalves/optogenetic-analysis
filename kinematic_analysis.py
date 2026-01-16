@@ -20,8 +20,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import kinematic_functions
 import gc
+import pickle
 
-#path='D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20240722 power checks CTX\\stance stim\\1mW\\'
+
 
 path='D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim\\'
 #path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied swing stim\\'
@@ -337,7 +338,8 @@ for count_animal, animal in enumerate(included_animal_list):
                 plt.legend(fontsize=8) #text(0, len(padded_positions) + 1, center+' onset', color=paw_colors[paw], fontsize=12, ha='center')
                # mng = plt.get_current_fig_manager()
                # mng.window.state('zoomed')  # for Windows
-                plt.savefig(path_save + animal + "_trial_"+str(count_trial+1)+"_stacked_stride_positions.png", bbox_inches='tight', dpi=300)
+                save_file = os.path.join(path_save, f"{animal}_trial_{count_trial+1}_stacked_stride_positions.png")
+                plt.savefig(_win_safe_path(save_file), bbox_inches='tight', dpi=300)
                # plt.show()
 
                 stride_onsets_all_trials.append(stride_onsets)
@@ -387,9 +389,13 @@ for count_animal, animal in enumerate(included_animal_list):
                 std_trajectory = np.nanstd(np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials))),axis=0)
                 avg_time = np.nanmean(np.array(list(chain.from_iterable(trimmed_times_all_stim_trials))),axis=0)
             else:
-                avg_trajectory = np.nanmean(np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials[:3]))),axis=0)
-                std_trajectory = np.nanstd(np.array(list(chain.from_iterable(trimmed_positions_all_stim_trials[:3]))),axis=0)
-                avg_time = np.nanmean(np.array(list(chain.from_iterable(trimmed_times_all_stim_trials[:3]))),axis=0)
+            with open(_win_safe_path(animal+"_avg_trajectory_data.pkl"), "wb") as f:
+                pickle.dump({
+                    "avg_trajectory": avg_trajectory,
+                    "std_trajectory": std_trajectory,
+                    "avg_time": avg_time
+                }, f)
+            
             
             ax2 = ax1.twinx()
             ax2.plot(avg_time, avg_trajectory, color=paw_colors[paw], linewidth=2, label='Avg')
@@ -408,7 +414,8 @@ for count_animal, animal in enumerate(included_animal_list):
             else:
                 plt.title('Histogram of Laser Onsets and Offsets (First 3 Trials)', fontsize=16)
             ax2.legend(fontsize=12)
-            plt.savefig(path_save + animal + "_laser_onset_offset_histogram_all_trials_"+str(hist_all)+".png")
+            hist_file = os.path.join(path_save, f"{animal}_laser_onset_offset_histogram_all_trials_{hist_all}.png")
+            plt.savefig(_win_safe_path(hist_file))
             #plt.show()
 
             # Plot all single trajectories and also the average trajectory
@@ -429,7 +436,8 @@ for count_animal, animal in enumerate(included_animal_list):
             ax_all_trajectories.set_ylabel('Position (mm)', fontsize=14)
             ax_all_trajectories.set_xlabel('Time (ms)', fontsize=14)
            # plt.show()
-            fig_all_trajectories.savefig(animal + "_stacked_stride_positions_with_high_peak_velocity_all_trials"+str(hist_all)+"first_tied.png", bbox_inches='tight', dpi=300)
+            hv_file = os.path.join(path_save, f"{animal}_stacked_stride_positions_with_high_peak_velocity_all_trials{hist_all}first_tied.png")
+            fig_all_trajectories.savefig(_win_safe_path(hv_file), bbox_inches='tight', dpi=300)
             # Plot the average of all trials for each animal, paw and axis
             # kinematic_functions.plot_resampled_position_all_trials(traj_resampled_all_trials[paw_names[paw]][axis], axis, paw_names[paw], animal, path_save, center=center, force_center=force_center)
 
@@ -467,4 +475,5 @@ ax.set_xlim(time_range[0], time_range[1])
 ax.legend(fontsize=14, bbox_to_anchor=(1.1, 1), loc='upper left')
 fig.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout to ensure the title is not cut off
 ax2.tick_params(axis='both', which='major', labelsize=16)
-plt.savefig( "ALLanimals_laser_onset_offset_histogram_all_trials_"+str(hist_all)+".png")
+all_hist_file = os.path.join(path_save, f"ALLanimals_laser_onset_offset_histogram_all_trials_{hist_all}.png")
+plt.savefig(_win_safe_path(all_hist_file))
