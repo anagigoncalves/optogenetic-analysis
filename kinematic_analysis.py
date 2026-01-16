@@ -20,6 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import kinematic_functions
 import gc
+from itertools import chain
 import pickle
 
 
@@ -154,7 +155,7 @@ for count_animal, animal in enumerate(included_animal_list):
                 avg_traj_resampled_all_trials_all_animals[paw_names[paw]][axis][count_animal, count_trial, :] = np.nanmean(strides_traj_resampled, axis=0)
 
                 # PLOT in TIME
-                fig = plt.figure(figsize=(7, 10))
+                fig_all_trajectories, ax_all_trajectories = plt.subplots()
                 # Add vertical zero line
                 plt.axvline(x=0, color='black', linestyle='--', linewidth=1)
                 step_y = 50
@@ -278,7 +279,12 @@ for count_animal, animal in enumerate(included_animal_list):
                     stride_offsets.append(current_stride_offset)
                     stride_laser_onsets.append(current_stride_laser_onset)
                     stride_laser_offsets.append(current_stride_laser_offset)
-                        
+
+                # Catch if no good strides were found
+                if len(stride_positions) == 0:
+                    print("No good strides found for trial", count_trial + 1, "in animal", animal, "for paw", paw_names[paw], "and axis", axis, ". Skipping trial.")
+                    continue
+                
                 # Plot as 2D image
                 # Determine the maximum length of all strides
                 max_length = max(len(pos) for pos in stride_positions)
@@ -462,11 +468,13 @@ nbins = np.arange(min_edge, max_edge + bin_width, bin_width)
 
 ax.hist(all_stride_onsets, bins=nbins, alpha=0.3, label='Stride Onsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
 ax.hist(all_stride_offsets, bins=nbins, alpha=0.6, label='Stride Offsets', color=paw_colors[paw], edgecolor=paw_colors[paw])
-ax.hist(all_onsets, bins=nbins, alpha=0.3, label='Laser Onsets', color=color_laser, edgecolor='dark'+color_laser)
-ax.hist(all_offsets, bins=nbins, alpha=0.6, label='Laser Offsets', color=color_laser, edgecolor='dark'+color_laser)
+if not plot_only_off:
+    ax.hist(all_onsets, bins=nbins, alpha=0.6, label='Laser Onsets', color=onset_face, edgecolor=onset_edge)
+ax.hist(all_offsets, bins=nbins, alpha=0.6, label='Laser Offsets', color=offset_face, edgecolor=offset_edge)
 ax.axvline(x=0, color=paw_colors[paw], linestyle='--', linewidth=1, label=center + ' onset')
-ax.axvline(x=np.nanmedian(all_onsets), color=color_laser, linestyle='-', linewidth=2, label='Med Onset')
-ax.axvline(x=np.nanmedian(all_offsets), color='dark'+color_laser, linestyle='-', linewidth=2, label='Med Offset')
+if not plot_only_off:
+    ax.axvline(x=np.nanmedian(all_onsets), color=onset_edge, linestyle='-', linewidth=2, label='Med Onset')
+ax.axvline(x=np.nanmedian(all_offsets), color=offset_edge, linestyle='-', linewidth=2, label='Med Offset')
 ax.axvline(x=np.nanmedian(all_stride_onsets), color=paw_colors[paw], linestyle='-', linewidth=2)
 ax.axvline(x=np.nanmedian(all_stride_offsets), color='darkred', linestyle='-', linewidth=2)
 ax.set_xlabel('Time (ms)', fontsize=18)
