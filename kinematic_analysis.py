@@ -1,7 +1,15 @@
 """
-Created on Tue Oct 15 14:42:12 2024
+Kinematic and laser timing analysis for optogenetic treadmill sessions.
 
-@author: Alice Geminiani
+This script loads processed tracking data per animal/session, extracts paw trajectories,
+resamples strides centered on swing/stance, computes per-trial/animal averages, and
+generates outputs:
+- Stacked stride position images with laser-on intervals
+- Histograms of stride and laser onset/offset timings
+- Pickled average trajectory/time data for downstream analysis
+
+Created on Tue Oct 15 14:42:12 2024
+Author: Alice Geminiani
 """
 
 # Kinematic analysis of individual limbs
@@ -119,6 +127,8 @@ for count_animal, animal in enumerate(included_animal_list):
             trimmed_times_all_stim_trials = []        
             for f in filelist:          # For each trial
                 count_trial = int(f.split('DLC')[0].split('_')[-1])-1      # Get trial number from file name, to spot any missing trial; parameters for remaining ones will stay to NaN
+                print( "Processing animal", animal, "trial", count_trial) 
+                
                 [final_tracks, tracks_tail, joints_wrist, joints_elbow, ear, bodycenter] = loco.read_h5(f, 0.9, 0)
                 [st_strides_mat, sw_pts_mat] = loco.get_sw_st_matrices(final_tracks, 1)
                 paws_rel = {'x': loco.get_paws_rel(final_tracks, 'X'), 'y': loco.get_paws_rel(final_tracks, 'Y'), 'z': loco.get_paws_rel(final_tracks, 'Z')}
