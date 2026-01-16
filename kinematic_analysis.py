@@ -185,10 +185,20 @@ for count_animal, animal in enumerate(included_animal_list):
                         if count_trial + 1 >= stim_start and count_trial + 1 < stim_start + stim_duration:
                             if plot_off_to_on:
                                 for l in range(len(current_onset_times)-1):
-                                    if sw_pts_mat[paw][s, 0, 0] <= offset_time[l+1] < onset_time[l] <= sw_pts_mat[paw][s + 1, 0, 0]:
-                                        current_stride_laser_onset = onset_time - stance_onset
-                                        current_stride_laser_offset = offset_time - stance_onset
+                                    if sw_pts_mat[paw][s, 0, 0] <= current_offset_times[l+1] < current_onset_times[l] <= sw_pts_mat[paw][s + 1, 0, 0]:
+                                        current_stride_laser_onset = current_offset_times[l+1] - stance_onset
+                                        current_stride_laser_offset = current_onset_times[l] - stance_onset
                                         break   # Found the first valid onset and offset, no need to check further
+                                    # Just offset within stride bounds
+                                    if sw_pts_mat[paw][s, 0, 0] <= offset_time <= sw_pts_mat[paw][s + 1, 0, 0] and onset_time > sw_pts_mat[paw][s + 1, 0, 0]:
+                                        current_stride_laser_offset = offset_time - stance_onset
+                                        current_stride_laser_onset = sw_pts_mat[paw][s + 1, 0, 0] - stance_onset
+                                        break
+                                    # Just onset within stride bounds
+                                    if sw_pts_mat[paw][s, 0, 0] <= onset_time <= sw_pts_mat[paw][s + 1, 0, 0] and onset_time < sw_pts_mat[paw][s, 0, 0]:
+                                        current_stride_laser_onset = sw_pts_mat[paw][s, 0, 0] - stance_onset
+                                        current_stride_laser_offset = offset_time - stance_onset
+                                        break
                             else:
                                 for onset_time, offset_time in zip(current_onset_times, current_offset_times):
                                     # Onset and offset within stride bounds
@@ -222,13 +232,13 @@ for count_animal, animal in enumerate(included_animal_list):
                         current_stride_laser_onset = np.nan
                         current_stride_laser_offset = np.nan
 
-                        # Check if any onset and offset times are within the current stride interval and center around stance
+                        # Check if any onset and offset times are within the current stride interval and center around swing
                         if count_trial + 1 >= stim_start and count_trial + 1 < stim_start + stim_duration:
                             if plot_off_to_on:
                                 for l in range(len(current_onset_times)-1):
-                                    if st_strides_mat[paw][s,0,0] <= offset_time[l+1] < onset_time[l] <= st_strides_mat[paw][s,1,0]:
-                                        current_stride_laser_onset = onset_time - st_strides_mat[paw][s,1,0]
-                                        current_stride_laser_offset = offset_time - st_strides_mat[paw][s,1,0]
+                                    if st_strides_mat[paw][s,0,0] <= current_offset_times[l+1] < current_onset_times[l] <= st_strides_mat[paw][s,1,0]:
+                                        current_stride_laser_onset = current_offset_times[l+1] - st_strides_mat[paw][s,1,0]
+                                        current_stride_laser_offset = current_onset_times[l] - st_strides_mat[paw][s,1,0]
                                         break   # Found the first valid onset and offset, no need to check further
                             else:
                                 for onset_time, offset_time in zip(current_onset_times, current_offset_times):
