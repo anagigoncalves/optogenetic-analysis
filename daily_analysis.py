@@ -4,6 +4,7 @@ import os
 import scipy.stats as st
 import math
 import pandas as pd
+import random
 import plotting_functions as pf
 
 # Set the default font
@@ -19,23 +20,24 @@ if single_animal_analysis:
     animal = 'MC19022'
 plot_continuous = 0
 compare_baselines = 0
-compute_statistics = 0
-scatter_single_animals = 1
+compute_statistics = 1
+scatter_single_animals = 0
 significance_threshold = 0.05
 
 #axes_ranges = {'coo': [-5, 3], 'step_length': [-12, 5], 'double_support': [-7, 13], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2]}
 #bars_ranges = {'coo': [-2, 5], 'step_length': [-3, 12], 'double_support': [-5, 13], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2]}
 # Opto
+# For DS we need higher scales cos with the bad strides put at nan instead of 0 in locomotion_class, we get higher avg values
 axes_ranges = {'coo': [-3, 3], 'step_length': [-9, 9], 'double_support': [-8, 8], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}
 bars_ranges = {'coo': [-3, 3], 'step_length': [-9, 9], 'double_support': [-8, 8], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}   # tied
-#axes_ranges = {'coo': [-6, 2], 'step_length': [-12, 5], 'double_support': [-5, 10], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}       #Rfast
-#bars_ranges = {'coo': [-2, 4], 'step_length': [-5, 9], 'double_support': [-9, 5], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}       #Rfast
+axes_ranges = {'coo': [-6, 2], 'step_length': [-12, 5], 'double_support': [-6, 10], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}       #Rfast
+bars_ranges = {'coo': [-2, 4], 'step_length': [-5, 9], 'double_support': [-9, 5], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}       #Rfast
 #axes_ranges = {'coo': [-2, 4], 'step_length': [-3, 9], 'double_support': [-10, 5], 'coo_stance': [-5, 5], 'swing_length': [-12, 5], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}       #Lfast
 #bars_ranges = {'coo': [-4, 2], 'step_length': [-9, 5], 'double_support': [-5, 10], 'coo_stance': [-5, 5], 'swing_length': [-12, 5], 'stance_speed': [-0.4,-0.2],'phase_st':[-1,1]}       #Lfast
 
 # ChR2 right
-axes_ranges = {'coo': [-6, 2], 'step_length': [-11, 5], 'double_support': [-6, 12], 'coo_stance': [-2, 6], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2], 'phase_st':[-1,1]}
-bars_ranges = {'coo': [-2, 3], 'step_length': [-2, 5], 'double_support': [-8, 6], 'coo_stance': [-2, 4], 'swing_length': [-4, 6], 'stance_speed': [-0.4,-0.2], 'phase_st':[-1,1]}
+#axes_ranges = {'coo': [-6, 2], 'step_length': [-11, 5], 'double_support': [-6, 12], 'coo_stance': [-2, 6], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2], 'phase_st':[-1,1]}
+#bars_ranges = {'coo': [-2, 3], 'step_length': [-2, 5], 'double_support': [-8, 6], 'coo_stance': [-2, 4], 'swing_length': [-4, 6], 'stance_speed': [-0.4,-0.2], 'phase_st':[-1,1]}
 # ChR2 left
 #axes_ranges = {'coo': [-4, 6], 'step_length': [-7, 10], 'double_support': [-12, 8], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2], 'phase_st':[-1,1]}
 #bars_ranges = {'coo': [-2, 2], 'step_length': [-5, 2], 'double_support': [-1, 6], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2], 'phase_st':[-1,1]}
@@ -43,14 +45,19 @@ uniform_ranges = 1
 
 # List of paths for each experiment - it is possible to have only one element
 # If there is a control with different sample size, it should be the first!!!
-experiment_names = [ 'data split']          #'WT', 'contra fast right', 'ipsi fast left']           # ,'th100sw' ['control', 'stance onset', 'swing onset']             #'ChR2']           #'right fast', 'left fast']          #,'stance stim', 'swing stim']           #'left fast no-stim','left fast perturb']   #'right fast', 'left fast' ]   'split left fast stim',    # 'control'] #         #'trial stim', 'stance stim', swing stim    'chr2'
+experiment_names = ['contra fast right', 'ipsi fast left']   #'th200st' ,'th100sw']           #'th200st' ,'th100sw']               #'WT']       #'stance stim', 'swing stim']       # ['WT', 'contra fast right', 'ipsi fast left']           # ,'th100sw' ['control', 'stance onset', 'swing onset']             #'ChR2']           #'right fast', 'left fast']          #,'stance stim', 'swing stim']           #'left fast no-stim','left fast perturb']   #'right fast', 'left fast' ]   'split left fast stim',    # 'control'] #         #'trial stim', 'stance stim', swing stim    'chr2'
 
 
 paths = [
-    'C:\\Users\\Utilizador\\Downloads\\data split 250514\\'
-  #  'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\all REPLAY\\',
+  #   'D:\\AliG\\Miniscopes\\Processed files\\split ipsi fast S1\\',
+    # 'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\',
+ # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim retracked with ClosedLoop-AliceG-2025-10-06\\',
+ #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied swing stim retracked with ClosedLoop-AliceG-2025-10-06\\',
+    #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\all REPLAY stim\\',
   #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th200st IO 50ms\\',
- # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th100sw IO 50ms\\'
+  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th100sw IO 50ms\\',
+ # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th200st IO 50ms retracked with ClosedLoop-AliceG-2025-10-06\\',
+  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th100sw IO 50ms retracked with ClosedLoop-AliceG-2025-10-06\\',
    #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\Split belt experiments\\20241111 split right fast control batch#4C\\',
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\Split belt experiments\\20241112 split right fast stance onset stim 200st IO batch#4C\\',
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\Split belt experiments\\20241113 split right fast swing onset stim 100sw IO batch#4C\\',
@@ -58,57 +65,25 @@ paths = [
    #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\Split belt experiments\\20241115 split left fast stance onset stim 200st IO batch#4C\\',
    #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\Split belt experiments\\20241116 split left fast swing onset stim 100sw IO batch#4C\\'
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\20241112 split right fast stance onset stim 200st IO batch#4C\\'
-   #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20240708 split right fast\\',
-  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241022 split right fast VIV49574 repeated\\'
-   #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20240709 split left fast\\'
    #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20240716 tied stance stim 100sw CTXchr2\\',
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20240729 tied swing stim 100st CTXchr2 1mW\\',
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\20241025 tied stance stim 100sw batch #4C\\'
-   #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241028 split right fast batch#4EZb\\'
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241007 split right fast batch#2EZ\\',
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241008 split left fast batch#2EZ\\',
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241007 split right fast batch#2EZ\\',
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241021 split right fast batch#3EZ\\',
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20241021 split left fast batch#3EZ\\'
- #'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\',
   #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split right fast\\',
   #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split left fast\\',
    # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_Linj_CTXstim\\stance stim 100sw\\',
  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_Linj_CTXstim\\swing stim 100st\\',
-  #'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split contra fast\\',
-  #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split ipsi fast\\',
-   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split contra fast right\\',
-   #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split ipsi fast left\\', 
-   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\20240311 tied swing stim redone\\'
-   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim\\',
- #  'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied swing stim\\',
-  #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th200st IO 50ms\\',
+# 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split contra fast\\',
+ # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split ipsi fast\\',
+   #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split contra fast right\\',
+    #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split ipsi fast left\\', 
+  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\testing stim sw st det\\',
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim REPLAY\\',
 # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied swing stim REPLAY\\',
  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\ALL_ANIMALS\\split left fast stance stim\\',
- #  'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\ALL_ANIMALS\\split right fast control\\',
+  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\ALL_ANIMALS\\split right fast control\\',
  #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\ALL_ANIMALS\\split right fast stance stim\\',
- #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\ALL_ANIMALS\\split right fast swing stim\\',
+# 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\ALL_ANIMALS\\split right fast swing stim\\',
     #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\20240130 tied stance stim IOcontrol\\',
-   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\20240129 tied swing stim IOcontrol\\',
-   # 'C:\\Users\\Utilizador\\Carey Lab Dropbox\\Alice Geminiani\\LocoCF-internal\\Tout_data\\20230606 tied stance stim\\'
-    #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\20230608 split right fast control\\'
- #'D:\\AliG\\climbing-opto-treadmill\\Experiments\\Tied belt sessions\\20240409 tied stance stim CTXchr2\\',
-   # 'D:\ #\AliG\\climbing-opto-treadmill\\Experiments\\Tied belt sessions\\20240307 tied swing stim IOchr2\\'
-       # 'D:\\AliG\\climbing-opto-treadmill\\Experiments\\Split belt sessions\\20240202 split left fast stance stim\\',
-   # 'C:\\Users\\Utilizador\\Carey Lab Dropbox\\Alice Geminiani\\Susd4KO project\\20240212 20240221 20240304 split right fast Susd4KO\\',
-   # 'C:\\Users\\Utilizador\\Carey Lab Dropbox\\Alice Geminiani\\Susd4KO project\\20240216 20240226 20240308 split left fast Susd4KO\\'
-     #"D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\LE\\split left fast no-stim S3\\",
-    # "D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\LE\\split right fast no-stim S2\\",
-      #"D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\LE\\split right fast stim S4\\",
-     # "D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\LE\\split right fast perturb S5\\",
-     #"D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\LE\\split left fast perturb S6\\"
-    # "D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\HE\\split left fast no-stim\\",
-    # "D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\HE\\split left fast perturb\\"
-     #"D:\\AliG\\climbing-opto-treadmill\\Experiments HGM\\HE\\split right fast perturb\\original protocol\\"
-     #"D:\\AliG\\climbing-opto-treadmill\\Experiments\\Tied belt sessions\\20240531 tied swing stim IOchr2 50ms\\"
-      #"D:\\AliG\\climbing-opto-treadmill\\Experiments\\Tied belt sessions\\20240503 tied stance stim IOchr2 50ms\\"
-      #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Split belt sessions\\20240227 split right fast control\\'
+   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\20240129 tied swing stim IOcontrol\\',   
      ]
 
 experiment_colors_dict = {'trial stim':'purple', 'stance stim':'darkorange','swing stim': 'green', 'control':'black', 'ChR2': 'cyan',
