@@ -237,8 +237,10 @@ for path in paths:
     #included_animal_list = []
     print("Analysing..........................", path)
     pixel_to_mm = 1/3.3            # real-time setup
-    if 'WT' in path:
-        pixel_to_mm = 1/1.955
+    floor_factor = 268
+    if 'WT' in path or 'Miniscopes' in path:
+        pixel_to_mm = 1/1.955   # Dana's setup              1/1.98          # Jovin's     
+        floor_factor = 152         
         included_animal_list = []
     elif 'LATinj' in path:
         included_animal_list = included_animal_list_EZ

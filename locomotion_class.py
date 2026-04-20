@@ -32,7 +32,7 @@ import nptdms as tdms
 
 class loco_class:
     
-    def __init__(self,path, pixel_to_mm = 1/3.3):
+    def __init__(self,path, pixel_to_mm = 1/3.3, floor_factor = 268):
         self.path = path
         self.delim = self.path[-1]
         path_split = self.path.split(self.delim)
@@ -44,7 +44,9 @@ class loco_class:
         self.sr = 333.33 #sampling rate of behavior camera for treadmill
         self.sr_F = 30
         self.my_dpi = 96 #resolution for plotting
-        self.floor = 268*self.pixel_to_mm
+        self.floor = floor_factor*self.pixel_to_mm
+        # self.floor = 268*self.pixel_to_mm      # real-time setup
+        # self.floor = 152*self.pixel_to_mm         # Miniscope setup ?
         self.trial_time = 60 #seconds
 
     @staticmethod
