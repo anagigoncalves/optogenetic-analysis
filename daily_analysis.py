@@ -602,7 +602,7 @@ if single_animal_analysis==0:
     max_animals = max(param_sym_multi[path][p].shape[0] for path in paths)
 
     for p in range(np.shape(param_sym)[0] - 1):
-        fig_multi = pf.plot_learning_curve_avg_compared(param_sym_multi, p, param_sym_labels, [included_animal_list, included_animals_id], experiment_colors_dict, experiment_names, intervals=intervals_split_stim, ranges=[uniform_ranges, axes_ranges])
+        fig_multi = pf.plot_learning_curve_avg_compared(param_sym_multi, p, param_sym_labels, [included_animal_list, included_animals_id], experiment_colors_dict, experiment_names, intervals=intervals_split_stim, ranges=[uniform_ranges, axes_ranges], use_median_iqr=False)
         
         if print_plots:
             pf.save_plot(fig_multi, paths_save[0], param_sym_name[p], plot_name='average_multi_session', bs_bool=bs_bool)

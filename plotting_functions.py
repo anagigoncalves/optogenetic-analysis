@@ -189,7 +189,7 @@ def plot_learning_curve_ind_animals_avg(param_sym_avg, current_param, labels_dic
 
 
 # Average with SEM for all experiments compared
-def plot_learning_curve_avg_compared(param_sym_multi, current_param, labels_dic, included_animals_list_ids, experiment_colors_dict, experiment_names, intervals=None,  ranges=[False, None]):
+def plot_learning_curve_avg_compared(param_sym_multi, current_param, labels_dic, included_animals_list_ids, experiment_colors_dict, experiment_names, intervals=None,  ranges=[False, None], use_median_iqr=False):
     """
     Plots the average learning curve compared across multiple experiments.
 
@@ -212,6 +212,8 @@ def plot_learning_curve_avg_compared(param_sym_multi, current_param, labels_dic,
         Dictionary containing 'split' and 'stim' intervals. Defaults to None.
     ranges : list, optional
         List containing a boolean and a dictionary for y-axis limits. Defaults to [False, None].
+    use_median_iqr : bool, optional
+        If True, plot median with interquartile range (IQR). If False, plot mean with standard error of the mean (SEM). Defaults to False.
 
     Returns
     -------
@@ -243,21 +245,26 @@ def plot_learning_curve_avg_compared(param_sym_multi, current_param, labels_dic,
     
     for path in paths:
         ntrial = len(param_sym_multi[path][current_param][0,:])
-        plt.plot(np.linspace(1, ntrial, ntrial), np.nanmean(param_sym_multi[path][current_param], axis = 0), 
-                 color=experiment_colors_dict[experiment_names[path_index]],  linewidth=2, label=experiment_names[path_index])
-        # Add SE of each session
-        ax_multi.fill_between(np.linspace(1, ntrial, ntrial), 
-                    np.nanmean(param_sym_multi[path][current_param], axis = 0)+np.nanstd(param_sym_multi[path][current_param], axis = 0)/np.sqrt(len(included_animals_list_ids[0])), 
-                    np.nanmean(param_sym_multi[path][current_param], axis = 0)-np.nanstd(param_sym_multi[path][current_param], axis = 0)/np.sqrt(len(included_animals_list_ids[0])), 
-                    facecolor=experiment_colors_dict[experiment_names[path_index]], alpha=0.5)
-        min_rect = min(min_rect,np.nanmin(np.nanmean(param_sym_multi[path][current_param], axis = 0)-np.nanstd(param_sym_multi[path][current_param], axis = 0)))
-        max_rect = max(max_rect,np.nanmax(np.nanmean(param_sym_multi[path][current_param], axis=0)+np.nanstd(param_sym_multi[path][current_param], axis = 0)))
+        x = np.linspace(1, ntrial, ntrial)
+        data = param_sym_multi[path][current_param]
+
+        if use_median_iqr:
+            center = np.nanmedian(data, axis=0)
+            q25 = np.nanpercentile(data, 25, axis=0)
+            q75 = np.nanpercentile(data, 75, axis=0)
+            plt.plot(x, center, color=experiment_colors_dict[experiment_names[path_index]], linewidth=2, label=experiment_names[path_index])
+            ax_multi.fill_between(x, q75, q25, facecolor=experiment_colors_dict[experiment_names[path_index]], alpha=0.5)
+            min_rect = min(min_rect, np.nanmin(q25))
+            max_rect = max(max_rect, np.nanmax(q75))
+        else:
+            center = np.nanmean(data, axis=0)
+            sem = np.nanstd(data, axis=0) / np.sqrt(len(included_animals_list_ids[0]))
+            plt.plot(x, center, color=experiment_colors_dict[experiment_names[path_index]], linewidth=2, label=experiment_names[path_index])
+            ax_multi.fill_between(x, center + sem, center - sem, facecolor=experiment_colors_dict[experiment_names[path_index]], alpha=0.5)
+            min_rect = min(min_rect, np.nanmin(center - sem))
+            max_rect = max(max_rect, np.nanmax(center + sem))
+
         path_index += 1
-
-
-
-
-
 
 
     set_symmetry_plot(ax_multi, param_sym_labels[current_param])
