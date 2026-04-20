@@ -125,12 +125,13 @@ experiment_colors_dict = {'trial stim':'purple', 'stance stim':'darkorange','swi
                           'th200st': 'darkorange',   #'royalblue',
                           'th100sw': 'green',   #'skyblue',          #  ['control', 'stance onset', 'swing onset']             #'ChR2']           #'right fast', 'left fast']          #,'stance stim', 'swing stim']           #'left fast no-stim','left fast perturb']   #'right fast', 'left fast' ]   'split left fast stim',    # 'control'] #         #'trial stim', 'stance stim', swing stim    'chr2'
                           'ipsi fast': 'black',
-                          'contra fast': 'lightseagreen',
+                          'contra fast': '#b892e9ff',         # 'magenta', #'lightseagreen',
                           'ipsi fast left': 'black',
                           'contra fast right': 'lightseagreen',
-                          'REPLAY': 'skyblue',
+                          'REPLAY stim': 'skyblue',
                           'data split': 'black'
                           }      # stim on: trial stance swing    'trial stim':'purple', 
+
 animal_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']              # Use the default matplotlib colours
 animal_colors_dict = {'MC16846': "#FFD700",'MC16848':"#BBF90F",'MC16850': "#15B01A",'MC16851': animal_colors[0], 'MC17319': animal_colors[1],
                       'MC17665': '#CCCCFF','MC17670': '#660033','MC17666': animal_colors[4], 'MC17668': animal_colors[5],'MC17669': animal_colors[6], 
@@ -374,20 +375,13 @@ for path in paths:
                             stance_speed[p, count_animal, count_trial] = np.nanmean(param_mat[p])
                     elif param == 'step_length':
                         param_sym[count_p, count_animal, count_trial] = np.nanmean(param_mat[0]) - np.nanmean(param_mat[2])
-                    else:
-                        param_sym[count_p, count_animal, count_trial] = np.nanmean(param_mat[0])-np.nanmean(param_mat[2])
-
-                    if param == 'phase_st':
+                    elif param == 'phase_st':
                         for p in range(4):
                             # Check for invalid strides: if more than 50% of the values are NaN, discard the trial
                             if np.sum(np.isnan(param_mat[3][count_paw])) > 0.5*len(param_mat[3][count_paw]):
                                 param_phase[p, count_animal, count_trial] = np.nan
                             else:
                                 param_phase[p, count_animal, count_trial] = (st.circmean(param_mat[3][count_paw], low=0, high=2*np.pi, nan_policy='omit'))
-
-                    elif param == 'stance_speed':
-                        for p in range(4):
-                            stance_speed[p, count_animal,count_trial] = np.nanmean(param_mat[p])
                     else:
                         param_sym[count_p, count_animal, count_trial] = np.nanmean(param_mat[0])-np.nanmean(param_mat[2])
 
