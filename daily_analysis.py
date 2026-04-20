@@ -207,11 +207,11 @@ LexpEZ = ['VIV47094', 'VIV47095', 'VIV47147', 'VIV47212', 'VIV49409', 'VIV49410'
 RexpEZ = ['VIV49574', 'VIV49939', 'VIV49940', 'VIV49931', 'VIV49933', 'VIV49934', 'VIV50051']
 
 session = 1
-Ntrials = 17  #28    #56       # 28
-stim_start = 5 #9  #18 #9
-split_start = 5   #9 #18        #9
+Ntrials = 28    #56       # 28
+stim_start = 7  #9  #18 #9
+split_start = 7 #9 #18        #9
 stim_duration = 10  #10  #20      #8
-split_duration = 12 #10 #20         #8
+split_duration = 10 #10 #20         #8
 if any('split' in path for path in paths):
     intervals_split_stim = {'split': [split_start, split_duration]}
 elif any('stim' in path or 'th' in path for path in paths):
@@ -254,9 +254,9 @@ for path in paths:
     #self.pixel_to_mm = 1/1.955            # Dana's setup
     otrack_classes.append(online_tracking_class.otrack_class(path))
     locos.append(locomotion_class.loco_class(path, pixel_to_mm, floor_factor))
-    paths_save.append(path + 'grouped output\\')       #\\histo_filtered\\')                #')       #\\
-    if not os.path.exists(path + 'grouped output\\'):     #\\histo_filtered\\'):
-        os.mkdir(path + 'grouped output\\')       #\\histo_filtered\\')
+    paths_save.append(path + 'grouped output temp\\')     #pixel_to_mm Dana\\')       #\\histo_filtered\\')                #')       #\\
+    if not os.path.exists(path + 'grouped output temp\\'):     #pixel_to_mm Dana\\')     #\\histo_filtered\\'):
+        os.mkdir(path + 'grouped output temp\\')     #pixel_to_mm Dana\\')      #\\histo_filtered\\')
 
     for exp in experiment_names:
         if exp in path:
@@ -270,6 +270,12 @@ for path in paths:
     if len(included_animal_list) == 0:              # All animals included
         included_animal_list = animal_list
     included_animals_id = [animal_list.index(i) for i in included_animal_list]
+
+    # Assign random colors to animals not already in the dictionary
+    for animal in animal_list:
+        if animal not in animal_colors_dict:
+            animal_colors_dict[animal] = "#%06x" % random.randint(0, 0xFFFFFF)
+
     session_list = []
     for a in range(len(animal_session_list)):
         session_list.append(animal_session_list[a][1])
@@ -353,10 +359,15 @@ for path in paths:
             for f in filelist:
                 count_trial = int(f.split('DLC')[0].split('_')[-1])-1      # Get trial number from file name, to spot any missing trial; parameters for remaining ones will stay to NaN
                 [final_tracks, tracks_tail, joints_wrist, joints_elbow, ear, bodycenter] = locos[path_index].read_h5(f, 0.9, 0)
+                print("Processing animal ", animal, " trial ", str(count_trial+1))
                 [st_strides_mat, sw_pts_mat] = locos[path_index].get_sw_st_matrices(final_tracks, 1)
                 st_strides_trials.append(st_strides_mat)
                 paws_rel = locos[path_index].get_paws_rel(final_tracks, 'X')
                 for count_p, param in enumerate(param_sym_name):
+                    #print("Computing ", param, ' for animal ', animal, ' trial ', str(count_trial+1), ' session ', str(session), ' path ', str(path_index+1), ' out of ', str(len(paths)))
+                    if np.sum(~np.isnan(np.concatenate([np.ravel(x) for x in st_strides_mat if isinstance(x, (np.ndarray, list))]))) == 0:
+                        print("No good strides found for trial", count_trial + 1, "in animal", animal, ". Skipping trial.")
+                        continue
                     param_mat = locos[path_index].compute_gait_param(bodycenter, final_tracks, paws_rel, st_strides_mat, sw_pts_mat, param)
                     if param == 'stance_speed':
                         for p in range(4):
@@ -379,6 +390,7 @@ for path in paths:
                             stance_speed[p, count_animal,count_trial] = np.nanmean(param_mat[p])
                     else:
                         param_sym[count_p, count_animal, count_trial] = np.nanmean(param_mat[0])-np.nanmean(param_mat[2])
+
                         '''
                         param_mat_sym = locos[path_index].compute_continuous_sym_gaitparam(param_mat, st_strides_mat, 'FR', 'FL')
                         
@@ -599,7 +611,7 @@ if merge_RLfast_sessions:
     included_animals_id = included_animals_id + [i + len(included_animals_id) for i in included_animals_id]  # We have the same animals in both sessions, so we just need to offset the indices for the second session
 if single_animal_analysis==0:
     # Determine the maximum number of animals across all paths, to handle the case of different number of animals in each path
-    max_animals = max(param_sym_multi[path][p].shape[0] for path in paths)
+    max_animals = max(param_sym_multi[path][0].shape[0] for path in param_sym_multi.keys())
 
     for p in range(np.shape(param_sym)[0] - 1):
         fig_multi = pf.plot_learning_curve_avg_compared(param_sym_multi, p, param_sym_labels, [included_animal_list, included_animals_id], experiment_colors_dict, experiment_names, intervals=intervals_split_stim, ranges=[uniform_ranges, axes_ranges], use_median_iqr=False)
@@ -793,7 +805,7 @@ if single_animal_analysis==0:
         x_aftereffect = list(range(1,len(control_path)+len(paths)+1))
         count_exp = 0
         # Add single animal data
-        if 'WT' in experiment_names:            # If we compare to WT not injected, we do not connect those animals cos they are not the same
+        if 'WT' in experiment_names and len(experiment_names) > 1:            # If we compare to WT not injected, we do not connect those animals cos they are not the same
             for a in range(len(to_plot_separately_onlyscatter[1])):
                 ax_separate_onlyscatter.plot(x_aftereffect[1:], np.array(to_plot_separately_onlyscatter)[1:, a], '-', color='lightgray', linewidth=1)
         else:
