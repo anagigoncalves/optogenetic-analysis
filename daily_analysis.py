@@ -233,6 +233,7 @@ locos = []
 paths_save = []
 param_sym_multi = {}
 path_index = 0
+merge_RLfast_sessions = 0 
 for path in paths:
     #included_animal_list = []
     print("Analysing..........................", path)
@@ -246,12 +247,13 @@ for path in paths:
         included_animal_list = included_animal_list_EZ
     elif 'RLinj' in path:
         included_animal_list = included_animal_list_EZ_double
+        merge_RLfast_sessions = 1             # This will merge the right and left fast sessions for the same animal, that should be element 2nd and 3rd in the list of paths
     
         
     # pixel_to_mm = 1/3.3            # real-time setup   
     #self.pixel_to_mm = 1/1.955            # Dana's setup
     otrack_classes.append(online_tracking_class.otrack_class(path))
-    locos.append(locomotion_class.loco_class(path, pixel_to_mm))
+    locos.append(locomotion_class.loco_class(path, pixel_to_mm, floor_factor))
     paths_save.append(path + 'grouped output\\')       #\\histo_filtered\\')                #')       #\\
     if not os.path.exists(path + 'grouped output\\'):     #\\histo_filtered\\'):
         os.mkdir(path + 'grouped output\\')       #\\histo_filtered\\')
@@ -581,6 +583,20 @@ for path in paths:
 
 #included_animals_id = [animal_list.index(i) for i in included_animal_list]
 # MULTI-SESSION PLOT
+if merge_RLfast_sessions:
+    # Get the path keys (should be 0, 1, 2)
+    paths_keys = list(param_sym_multi.keys())
+    
+    # For each parameter, concatenate data from paths[2] into paths[1]
+    for p in range(np.shape(param_sym)[0]):
+        param_sym_multi[paths_keys[1]][p] = np.concatenate((param_sym_multi[paths_keys[1]][p], 
+                                                                   param_sym_multi[paths_keys[2]][p]), axis=0)
+    
+    # Delete the third element
+    del param_sym_multi[paths_keys[2]]
+    experiment_colors_dict['contra fast right'] = 'darkblue'
+    included_animal_list = included_animal_list*2  # We have the same animals in both sessions
+    included_animals_id = included_animals_id + [i + len(included_animals_id) for i in included_animals_id]  # We have the same animals in both sessions, so we just need to offset the indices for the second session
 if single_animal_analysis==0:
     # Determine the maximum number of animals across all paths, to handle the case of different number of animals in each path
     max_animals = max(param_sym_multi[path][p].shape[0] for path in paths)
@@ -591,7 +607,8 @@ if single_animal_analysis==0:
         if print_plots:
             pf.save_plot(fig_multi, paths_save[0], param_sym_name[p], plot_name='average_multi_session', bs_bool=bs_bool)
 
-'''
+
+
         # LEARNING PARAMETERS (bar plots) - each one will be num_experiments x num_animals
         initial_error = []                      
         learning = []
@@ -610,7 +627,11 @@ if single_animal_analysis==0:
 
         path_index = 0  
         
+        if merge_RLfast_sessions:
+            paths = param_sym_multi.keys()  # If we merge RL fast sessions, we have less paths to consider
+            experiment_names = [name for name in experiment_names if any(name in key for key in param_sym_multi.keys())]
         current_experiment_colors = [experiment_colors_dict[key] for key in experiment_names if key in experiment_names]
+        
         for path in paths:
             
             # Flip signs to have good learning always positive
@@ -837,4 +858,3 @@ if single_animal_analysis==0:
         plt.savefig(paths_save[0] + param_sym_name[p] + '_bar_scatterplot_'+name_to_plot_separately, dpi=1200)   
                   
      
-'''
