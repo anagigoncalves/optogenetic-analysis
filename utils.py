@@ -1,6 +1,84 @@
 import numpy as np
 import os
 from scipy.interpolate import CubicSpline
+def get_baseline_scatter_ylim(param_name, use_uniform_ranges, bars_ranges):
+    if not use_uniform_ranges:
+        return None
+    max_abs_limit = max(abs(value) for value in bars_ranges[param_name])
+    scaled_limit = 1.5 * max_abs_limit
+    return [-scaled_limit, scaled_limit]
+
+
+def get_baseline_export_directory(path, export_folder_name):
+    normalized_path = os.path.normpath(path)
+    current_dir = normalized_path
+
+    while True:
+        folder_name = os.path.basename(current_dir)
+        if folder_name.startswith('HISTO_CHECKED_ANIMALS'):
+            return os.path.join(os.path.dirname(current_dir), export_folder_name)
+
+        parent_dir = os.path.dirname(current_dir)
+        if parent_dir == current_dir:
+            break
+        current_dir = parent_dir
+
+    return os.path.join(os.path.dirname(normalized_path), export_folder_name)
+
+
+def get_baseline_export_tag(path):
+    normalized_path = os.path.normpath(path)
+    session_name = os.path.basename(normalized_path).replace('CL-Ali', '').strip()
+    session_name_lower = session_name.lower()
+    tag_parts = []
+
+    for cohort_name in ['WT', 'LATinj', 'RLinj', 'Linj', 'Rinj']:
+        if cohort_name.lower() in normalized_path.lower():
+            tag_parts.append(cohort_name)
+            break
+
+    if 'contra' in session_name_lower and 'fast' in session_name_lower:
+        tag_parts.append('contra-fast')
+    elif 'ipsi' in session_name_lower and 'fast' in session_name_lower:
+        tag_parts.append('ipsi-fast')
+    elif 'left' in session_name_lower and 'fast' in session_name_lower:
+        tag_parts.append('left-fast')
+    elif 'right' in session_name_lower and 'fast' in session_name_lower:
+        tag_parts.append('right-fast')
+
+    if 'contra' in session_name_lower and 'right' in session_name_lower:
+        tag_parts.append('right')
+    elif 'ipsi' in session_name_lower and 'left' in session_name_lower:
+        tag_parts.append('left')
+
+    if not tag_parts:
+        tag_parts.append(session_name.replace(' ', '_'))
+
+    return '_'.join(tag_parts)
+
+
+def save_baseline_scatter_values(param_name, param_label, path, baseline_values, animal_names, reference_mode, export_folder_name):
+    export_dir = get_baseline_export_directory(path, export_folder_name)
+    os.makedirs(export_dir, exist_ok=True)
+
+    baseline_values = np.asarray(baseline_values, dtype=float)
+    animal_names = list(animal_names)
+    if len(animal_names) < len(baseline_values):
+        animal_names.extend([f'animal_{idx+1}' for idx in range(len(animal_names), len(baseline_values))])
+    else:
+        animal_names = animal_names[:len(baseline_values)]
+
+    baseline_table = pd.DataFrame({
+        'animal': animal_names,
+        'baseline_value': baseline_values,
+        'source_path': path,
+    })
+    baseline_table = baseline_table[np.isfinite(baseline_table['baseline_value'])]
+
+    output_name = f'{param_label}_{get_baseline_export_tag(path)}.csv'
+    if param_name == 'phase_st':
+        output_name = get_phase_st_output_filename(output_name, reference_mode)
+    baseline_table.to_csv(os.path.join(export_dir, output_name), index=False)
 
 def rename_files(folder_path, old_char, new_char):
     ''' 
