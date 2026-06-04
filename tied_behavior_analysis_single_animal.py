@@ -27,15 +27,17 @@ frames_dFF = 0 #black frames removed before ROI segmentation
 start_split = 9
 
 
-
-#TODO: add pixel to mm for the two setups!!!!!!!!!!!!!!!!!!!!!!!!
-
-
+pixel_to_mm = 1/3.3            # real-time setup
+floor_factor = 268
+if 'WT' in path_loco:
+    #pixel_to_mm = 1/1.955           # Dana
+    pixel_to_mm = 1/1.98           # Jovin
+    floor_factor = 152  
 
 #import classes
 #os.chdir('C:\\Users\\Ana\\Documents\\PhD\\Dev\\optogenetic-analysis\\')
 import locomotion_class
-loco = locomotion_class.loco_class(path_loco)
+loco = locomotion_class.loco_class(path_loco, pixel_to_mm=pixel_to_mm, floor_factor=floor_factor)
 if not os.path.exists(path_loco+'gait parameters'):
     os.mkdir(path_loco+'gait parameters')
 
