@@ -56,7 +56,11 @@ for animal in animal_list:
     #get h5 list of files
     filelist = loco.get_track_files(animal,session)
     all_trials = loco.trials_ordered(filelist)
-    trials_of_interest = all_trials[:start_split] #trials of interest for analysis - baseline tied
+    if 'WT' in path_loco:
+        selected_trial_idx = np.arange(3) # first 3 baseline trials for WT sessions
+    else:
+        selected_trial_idx = np.arange(start_split-4, start_split-1) # trials 6, 7 and 8 before split starts at 9
+    trials_of_interest = all_trials[selected_trial_idx]
     exclude_bad_strides = 1
     axis = 'X'
     final_tracks_trials = []
@@ -126,67 +130,36 @@ for animal in animal_list:
         #intralimb parameter distribution
         print('Intralimb parameters for '+animal+' session '+session_list[count_animal])
         param_tied = ['stance_duration', 'swing_duration', 'cadence', 'swing_length', 'coo','double_support']
-        fig, ax = plt.subplots(3, 2, figsize=(20,20), tight_layout = True)
-        ax =  ax.ravel()
-        count_p = 0
-        for g in param_tied:
-            param_paw = []
-            speed_paw = []
-            for t in range(len(trials_of_interest)):
-                param_mat = loco.compute_gait_param(bodycenter_trials[t],final_tracks_trials[t],paws_rel_X_trials[t],st_strides_trials[t],sw_pts_trials[t],g)
-                for b in range(len(speed_range)-1):
-                    if len(stride_idx_bins_paws[0][t][b])>0:
-                        param_paw.extend(param_mat[0][stride_idx_bins_paws[0][t][b]]) #do for FR paw
-                        speed_paw.extend(np.repeat(speed_range[b],len(param_mat[0][stride_idx_bins_paws[0][t][b]])))    
-            param_events = {'values': param_paw,'speed': speed_paw}
-            df = pd.DataFrame(param_events)
-            lplot = sns.lineplot(x = df['speed'], y = df['values'], ax = ax[count_p], color = 'black')
-            ax[count_p].set_xlabel('Speed', fontsize=16)
-            ax[count_p].set_title(g.replace('_',' ') + ' FR paw', fontsize=20)
-            ax[count_p].set_ylabel(g.replace('_',' '), fontsize=16)
-            ax[count_p].tick_params(axis='x', labelsize=14)
-            ax[count_p].tick_params(axis='y', labelsize=14)
-            ax[count_p].spines['right'].set_visible(False)
-            ax[count_p].spines['top'].set_visible(False)
-            count_p += 1
-            if not os.path.exists(path_save):
-                os.mkdir(path_save)
-            np.save(path_save+g+'_FR',df)       
-        if print_plots:
-            if not os.path.exists(path_save):
-                os.mkdir(path_save)
-            plt.savefig(path_save+ 'param_intralimb_FR_'+animal+'_'+str(session), dpi=loco.my_dpi)
-
-        fig, ax = plt.subplots(3, 2, figsize=(20,20), tight_layout = True)
-        ax =  ax.ravel()
-        count_p = 0
-        for g in param_tied:
-            param_paw = []
-            speed_paw = []
-            for t in range(len(trials_of_interest)):
-                param_mat = loco.compute_gait_param(bodycenter_trials[t],final_tracks_trials[t],paws_rel_X_trials[t],st_strides_trials[t],sw_pts_trials[t],g)
-                for b in range(len(speed_range)-1):
-                    if len(stride_idx_bins_paws[2][t][b])>0:
-                        param_paw.extend(param_mat[2][stride_idx_bins_paws[2][t][b]]) #do for FL paw
-                        speed_paw.extend(np.repeat(speed_range[b],len(param_mat[2][stride_idx_bins_paws[2][t][b]])))
-            param_events = {'values': param_paw,'speed': speed_paw}
-            df = pd.DataFrame(param_events)
-            lplot = sns.lineplot(x = df['speed'], y = df['values'], ax = ax[count_p], color = 'black')
-            ax[count_p].set_xlabel('Speed', fontsize=16)
-            ax[count_p].set_title(g.replace('_',' ') + ' FL paw', fontsize=20)
-            ax[count_p].set_ylabel(g.replace('_',' '), fontsize=16)
-            ax[count_p].tick_params(axis='x', labelsize=14)
-            ax[count_p].tick_params(axis='y', labelsize=14)
-            ax[count_p].spines['right'].set_visible(False)
-            ax[count_p].spines['top'].set_visible(False)
-            count_p += 1
-            if not os.path.exists(path_save):
-                os.mkdir(path_save)
-            np.save(path_save+g+'_FL',df)
-        if print_plots:
-            if not os.path.exists(path_save):
-                os.mkdir(path_save)
-            plt.savefig(path_save+ 'param_intralimb_FL_'+animal+'_'+str(session), dpi=loco.my_dpi)
+        os.makedirs(path_save, exist_ok=True)
+        for paw_idx, paw_name in enumerate(paw_names):
+            fig, ax = plt.subplots(3, 2, figsize=(20,20), tight_layout = True)
+            ax = ax.ravel()
+            count_p = 0
+            for g in param_tied:
+                param_paw = []
+                speed_paw = []
+                for t in selected_trial_idx:
+                    param_mat = loco.compute_gait_param(bodycenter_trials[t],final_tracks_trials[t],paws_rel_X_trials[t],st_strides_trials[t],sw_pts_trials[t],g)
+                    for b in range(len(speed_range)-1):
+                        if len(stride_idx_bins_paws[paw_idx][t][b]) > 0:
+                            paw_stride_idx = stride_idx_bins_paws[paw_idx][t][b]
+                            param_paw.extend(param_mat[paw_idx][paw_stride_idx])
+                            speed_paw.extend(np.repeat(speed_range[b], len(param_mat[paw_idx][paw_stride_idx])))
+                param_events = {'values': param_paw,'speed': speed_paw}
+                df = pd.DataFrame(param_events)
+                sns.lineplot(x=df['speed'], y=df['values'], ax=ax[count_p], color='black')
+                ax[count_p].set_xlabel('Speed', fontsize=16)
+                ax[count_p].set_title(g.replace('_',' ') + ' ' + paw_name + ' paw', fontsize=20)
+                ax[count_p].set_ylabel(g.replace('_',' '), fontsize=16)
+                ax[count_p].tick_params(axis='x', labelsize=14)
+                ax[count_p].tick_params(axis='y', labelsize=14)
+                ax[count_p].spines['right'].set_visible(False)
+                ax[count_p].spines['top'].set_visible(False)
+                count_p += 1
+                np.save(path_save+g+'_'+paw_name, df)
+            if print_plots:
+                plt.savefig(path_save + 'param_intralimb_' + paw_name + '_' + animal + '_' + str(session), dpi=loco.my_dpi)
+            plt.close(fig)
         
         #plot phase in reference to FR
         print('Stance phasing for '+animal+' session '+session_list[count_animal])
@@ -197,7 +170,7 @@ for animal in animal_list:
         for p in range(4):
             param_paw = []
             speed_paw = []
-            for t in range(len(trials_of_interest)):
+            for t in selected_trial_idx:
                 param_mat = loco.compute_gait_param(bodycenter_trials[t],final_tracks_trials[t],paws_rel_X_trials[t],st_strides_trials[t],sw_pts_trials[t],'phase_st')
                 for b in range(len(speed_range)-1):
                     if len(stride_idx_bins_paws[0][t][b])>0:
@@ -231,7 +204,7 @@ for animal in animal_list:
                 b_count = 0
                 for b in speed_bins:
                     param_paw = []
-                    for t in range(len(trials_of_interest)):
+                    for t in selected_trial_idx:
                         param_mat = loco.compute_trajectories(paws_rel_X_trials[t],bodycenter_trials[t],final_tracks_trials[t],joints_elbow_trials[t],joints_wrist_trials[t],tracks_tail_trials[t],st_strides_trials[t],sw_pts_trials[t],p_traj)    
                         if len(stride_idx_bins_paws[paw][t][b])>0:
                             if p_traj == 'tail_y_relbase' or p_traj == 'tail_z_relbase':
@@ -264,7 +237,7 @@ for animal in animal_list:
             params_mean = np.zeros((len(param_limb_side),stride_pts))
             for p_traj in param_limb_side:
                 param_paw = []
-                for t in range(len(trials_of_interest)):
+                for t in selected_trial_idx:
                     param_mat = loco.compute_trajectories(paws_rel_X_trials[t],bodycenter_trials[t],final_tracks_trials[t],joints_elbow_trials[t],joints_wrist_trials[t],tracks_tail_trials[t],st_strides_trials[t],sw_pts_trials[t],p_traj)
                     if len(stride_idx_bins_paws[paw][t][speed_bin_side])>0:
                         param_paw.extend(param_mat[paw][stride_idx_bins_paws[paw][t][speed_bin_side][:-1]-1]) 
@@ -304,7 +277,7 @@ for animal in animal_list:
             for b in speed_bins:
                 param_x_paw = []
                 param_y_paw = []
-                for t in range(len(trials_of_interest)):
+                for t in selected_trial_idx:
                     param_x_mat = loco.compute_trajectories(paws_rel_X_trials[t],bodycenter_trials[t],final_tracks_trials[t],joints_elbow_trials[t],joints_wrist_trials[t],tracks_tail_trials[t],st_strides_trials[t],sw_pts_trials[t],'swing_x_rel')    
                     param_y_mat = loco.compute_trajectories(paws_rel_Y_trials[t],bodycenter_trials[t],final_tracks_trials[t],joints_elbow_trials[t],joints_wrist_trials[t],tracks_tail_trials[t],st_strides_trials[t],sw_pts_trials[t],'swing_y_rel')    
                     if len(stride_idx_bins_trials[t][b])>0:
@@ -338,7 +311,7 @@ for animal in animal_list:
         param_bins_mean = np.zeros((len(speed_range)-1,7))
         for b in range(len(speed_range)-1):
             param_paw = []
-            for t in range(len(trials_of_interest)):
+            for t in selected_trial_idx:
                 supports = loco.get_supports(final_tracks_trials[t],st_strides_trials[t],sw_pts_trials[t])
                 supports_FR = supports[0] #ref FR paw
                 if len(stride_idx_bins_paws[0][t][b])>0:
@@ -378,7 +351,7 @@ for animal in animal_list:
             b_count = 0
             for b in speed_bins:
                 param_paw = []
-                for t in range(len(trials_of_interest)):
+                for t in selected_trial_idx:
                     param_mat = loco.compute_angle_trajectories(st_strides_trials[t],sw_pts_trials[t],body_axis_xy_trials[t],body_axis_xz_trials[t],tail_axis_xy_trials[t],tail_axis_xz_trials[t],wrist_angles_trials[t],p_traj)
                     if len(stride_idx_bins_paws[0][t][b])>0:
                         if p_traj == 'tail_axis_XYswing' or p_traj == 'tail_axis_XZswing':
