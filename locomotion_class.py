@@ -610,11 +610,165 @@ class loco_class:
                 sw_pts_mat_clean.append(sw_pts_mat_nan)
             else:
                 sw_pts_mat_clean.append(sw_pts_mat_new[p])
-            print('Paw %d: %d stance and %d swing after exclusion' %(p+1,np.shape(st_strides_mat_clean[p])[0],np.shape(sw_pts_mat_clean[p])[0]))
         if return_all:
             return st_strides_mat_clean, sw_pts_mat_clean, st_strides_mat_before_exclusion, sw_pts_mat_before_exclusion
         else:
             return st_strides_mat_clean, sw_pts_mat_clean
+
+    def get_sw_st_matrices_xzeq(self,final_tracks,exclusion,wl=11,return_all=False):
+        """Computes swing and stance points of a trial from x axis of the bottom view tracking and z axis, 
+        as the points where x and z speed are equal.
+        It excludes strides based on a distribution of some gait parameters
+        Input: final_tracks (4x5xframes)
+               exclusion - boolean to exclude strides 
+               wl - window length for savgol filter
+               return_all - boolean to return all strides without exclusion, to be used not for gait param computation but more for stride plotting
+        Output: st_strides_mat (stridesx2x5)
+                sw_pts_mat (stridesx1x5)
+        columns: st/sw in ms; x(st/sw); y(st/sw); z(st/sw); st idx/sw idx
+        2 middle columns for beginning and end of stride"""
+        #convert to mm and interpolate NaNs
+        X = final_tracks[0,:,:]*self.pixel_to_mm
+        Y = final_tracks[1,:,:]*self.pixel_to_mm
+        Z = final_tracks[3,:,:]*self.pixel_to_mm
+        X_interp = self.inpaint_nans(X)
+        Y_interp = self.inpaint_nans(Y)
+        Z_interp = self.inpaint_nans(Z)
+        #peak detection
+        swing_mat = []
+        stance_mat = []
+        for p in range(4):
+            data_filt_x = savgol_filter(X_interp[p,:], window_length = wl, polyorder = 1)
+            peaks = find_peaks(data_filt_x)
+            throughs = find_peaks(-data_filt_x)
+            stance_peaks = peaks[0]
+            swing_throughs = throughs[0]
+            n_stance = len(stance_peaks)
+            n_swing = len(swing_throughs)
+            # Speeds computation from filtered positions
+            data_filt_z = savgol_filter(Z_interp[p,:], window_length = wl, polyorder=1)
+            speed_x = np.diff(data_filt_x, prepend=data_filt_x[0])
+            speed_z = np.diff(data_filt_z, prepend=data_filt_z[0])
+            speed_diff = speed_x - speed_z
+            equal_zero = np.where(np.isfinite(speed_diff) & (np.abs(speed_diff) <= 1e-6))[0]
+            s_v = np.sign(speed_diff)
+            s_v[~np.isfinite(s_v)] = 0
+            eq_cross = np.where((s_v[:-1] * s_v[1:]) < 0)[0] + 1
+            eq_idx = np.unique(np.concatenate([equal_zero, eq_cross]))
+            closest_eq = np.full(n_stance, np.nan, dtype=float)
+            closest_eq_sw = np.full(n_swing, np.nan, dtype=float)
+
+            for i, stf in enumerate(stance_peaks.astype(int)):
+                # Choose the absolute closest speed-equality frame (before or after stance frame)
+                if eq_idx.size:
+                    ip = np.searchsorted(eq_idx, stf, side='left')
+                    # Candidate just before and just after insertion point
+                    left = int(eq_idx[ip - 1]) if ip > 0 else None
+                    right = int(eq_idx[ip]) if ip < eq_idx.size else None
+                    if (left is not None) and (right is not None):
+                        closest_eq[i] = left if abs(stf - left) <= abs(right - stf) else right
+                    elif left is not None:
+                        closest_eq[i] = left
+                    elif right is not None:
+                        closest_eq[i] = right
+            valid_eq = np.isfinite(closest_eq)
+            stance_eq = closest_eq[valid_eq].astype(int)
+            for i, swf in enumerate(swing_throughs.astype(int)):
+                # Choose the absolute closest speed-equality frame (before or after swing frame)
+                if eq_idx.size:
+                    ip = np.searchsorted(eq_idx, swf, side='left')
+                    # Candidate just before and just after insertion point
+                    left = int(eq_idx[ip - 1]) if ip > 0 else None
+                    right = int(eq_idx[ip]) if ip < eq_idx.size else None
+                    if (left is not None) and (right is not None):
+                        closest_eq_sw[i] = left if abs(swf - left) <= abs(right - swf) else right
+                    elif left is not None:
+                        closest_eq_sw[i] = left
+                    elif right is not None:
+                        closest_eq_sw[i] = right
+            valid_eq_sw = np.isfinite(closest_eq_sw)
+            swing_eq = closest_eq_sw[valid_eq_sw].astype(int)
+            swing_mat.append(np.column_stack((swing_eq/self.sr*1000,X_interp[p,swing_eq],Y_interp[p,swing_eq],Z_interp[p,swing_eq],swing_eq)))
+            stance_mat.append(np.column_stack((stance_eq/self.sr*1000,X_interp[p,stance_eq],Y_interp[p,stance_eq],Z_interp[p,stance_eq],stance_eq)))
+        #stride sorting
+        st_strides_mat = []
+        sw_pts_mat = []
+        for p in range(4):
+            st_strides = np.zeros((len(stance_mat[p]),2,5))
+            sw_pts = np.zeros((len(stance_mat[p]),1,5))
+            for s in range(np.shape(stance_mat[p])[0]-1):
+                #define stride from st to st onset
+                st_strides[s,:,0] = [stance_mat[p][s,0],stance_mat[p][s+1,0]-1]
+                st_strides[s,:,1] = [stance_mat[p][s,1],stance_mat[p][s+1,1]-1]
+                st_strides[s,:,2] = [stance_mat[p][s,2],stance_mat[p][s+1,2]-1]
+                st_strides[s,:,3] = [stance_mat[p][s,3],stance_mat[p][s+1,3]-1]
+                st_strides[s,:,4] = [stance_mat[p][s,4],stance_mat[p][s+1,4]-1]
+                # find swing point between those st onsets; if none, invalidate this stride
+                sel = (swing_mat[p][:,4] >= stance_mat[p][s,4]) & (swing_mat[p][:,4] <= stance_mat[p][s+1,4])
+                if np.any(sel):
+                    sw_sel = swing_mat[p][sel]
+                    sw_pts[s,:,0] = sw_sel[0,0]
+                    sw_pts[s,:,1] = sw_sel[0,1]
+                    sw_pts[s,:,2] = sw_sel[0,2]
+                    sw_pts[s,:,3] = sw_sel[0,3]
+                    sw_pts[s,:,4] = sw_sel[0,4]
+                else:
+                    st_strides[s,:,:] = np.nan
+                    sw_pts[s,:,:] = np.nan
+            # Remove strides whose entire row is NaN (invalid strides)
+            mask_st = ~np.all(np.isnan(st_strides), axis=(1, 2))
+            st_strides = st_strides[mask_st, :, :]
+            mask_sw = ~np.all(np.isnan(sw_pts), axis=(1, 2))
+            sw_pts = sw_pts[mask_sw, :, :]
+            # Append to global list
+            st_strides_mat.append(st_strides)
+            sw_pts_mat.append(sw_pts)            
+        if exclusion:
+            #compute some gait parameters
+            stride_duration_mat = []
+            swing_duration_mat = []
+            stance_duration_mat = []
+            swing_length_mat = []
+            swing_velocity_mat = []
+            
+            for p in range(4):
+                stride_duration = st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0]
+                swing_duration = st_strides_mat[p][:,1,0]-sw_pts_mat[p][:,0,0]
+                stance_duration = sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0]
+                swing_length = X_interp[p,st_strides_mat[p][:,1,4].astype(int)]-X_interp[p,sw_pts_mat[p][:,0,4].astype(int)]
+                swing_velocity = swing_length/swing_duration
+                stride_duration_mat.append(stride_duration)
+                swing_duration_mat.append(swing_duration)
+                stance_duration_mat.append(stance_duration)
+                swing_length_mat.append(swing_length)
+                swing_velocity_mat.append(swing_velocity)
+            #exclude strides
+            exclusion_paws = []
+            for p in range(4):               
+                exclusion_mat = [np.where(stride_duration_mat[p]>600)[0],np.where(stride_duration_mat[p]<75)[0],np.where(swing_duration_mat[p]>275)[0],np.where(swing_duration_mat[p]<25)[0],np.where(swing_length_mat[p]>90)[0],np.where(swing_length_mat[p]<10)[0],np.where(stance_duration_mat[p]>550)[0],np.where(stance_duration_mat[p]<30)[0],np.where(swing_velocity_mat[p]<0)[0]]
+                exclusion_paws.append(np.unique(list(chain.from_iterable(exclusion_mat))))
+            #make excluded strides nan
+            st_strides_mat_new = []
+            sw_pts_mat_new = []
+            for p in range(4):
+                if len(exclusion_paws[p])>0:
+                    st_strides_mat[p][exclusion_paws[p],:,:] = np.nan
+                    st_strides_excl = st_strides_mat[p]
+                    #remove nans
+                    st_strides_excl = st_strides_excl[~np.isnan(st_strides_excl[:,0,0]),:,:]
+                    st_strides_mat_new.append(st_strides_excl)
+                    sw_pts_mat[p][exclusion_paws[p],:,:] = np.nan
+                    sw_pts_excl = sw_pts_mat[p]
+                    #remove nans
+                    sw_pts_excl = sw_pts_excl[~np.isnan(sw_pts_excl[:,0,0]),:,:]
+                    sw_pts_mat_new.append(sw_pts_excl)
+                else:
+                    st_strides_mat_new.append(st_strides_mat[p])
+                    sw_pts_mat_new.append(sw_pts_mat[p])
+        else:
+            st_strides_mat_new = st_strides_mat
+            sw_pts_mat_new = sw_pts_mat
+        #check if there are enough strides detected
         st_strides_mat_clean = []
         sw_pts_mat_clean = []
         for p in range(4):
@@ -934,6 +1088,7 @@ class loco_class:
                 X = final_tracks[0,:,:]*self.pixel_to_mm
                 X_interp = self.inpaint_nans(X)
                 paws_rel.append(X_interp[p,:]-np.nanmean(X_interp[:4,:],axis=0))
+
             if axis == 'Y':
                 Y = final_tracks[1,:,:]*self.pixel_to_mm
                 Y_interp = self.inpaint_nans(Y)
