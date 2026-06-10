@@ -2,6 +2,8 @@ import numpy as np
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import csv
+import json
 import scipy.stats as st
 from scipy.interpolate import CubicSpline
 
@@ -49,6 +51,188 @@ def get_phase_st_output_filename(filename, reference_mode):
 
 def sanitize_filename_label(label):
     return label.replace(' ', '_')
+
+
+def win_safe_path(path_value: str) -> str:
+    """Prefix long Windows paths with \\?\ to reduce MAX_PATH issues."""
+    try:
+        if os.name == 'nt':
+            normalized_path = os.path.normpath(path_value)
+            if len(normalized_path) > 240 and not normalized_path.startswith('\\\\?\\'):
+                return '\\\\?\\' + normalized_path
+            return normalized_path
+        return path_value
+    except Exception:
+        return path_value
+
+
+def finite_array(values):
+    array_values = np.asarray(values, dtype=float).ravel()
+    return array_values[np.isfinite(array_values)]
+
+
+def load_json(json_path):
+    with open(json_path, encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def load_cspk_histogram_data(
+    folder,
+    dataset_name,
+    histogram_suffix,
+    metadata_suffix,
+    histogram_time_column,
+    histogram_count_column,
+    metadata_bin_size_column,
+    metadata_laser_duration_column,
+):
+    if not folder or not dataset_name:
+        return None
+
+    histogram_path = os.path.join(folder, f'{dataset_name}{histogram_suffix}')
+    metadata_path = os.path.join(folder, f'{dataset_name}{metadata_suffix}')
+
+    if not os.path.exists(histogram_path):
+        raise FileNotFoundError(f'CSpk histogram file not found: {histogram_path}')
+    if not os.path.exists(metadata_path):
+        raise FileNotFoundError(f'CSpk metadata file not found: {metadata_path}')
+
+    with open(histogram_path, newline='') as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f'CSpk histogram file is missing a header row: {histogram_path}')
+        missing_columns = [
+            column for column in (histogram_time_column, histogram_count_column)
+            if column not in reader.fieldnames
+        ]
+        if missing_columns:
+            raise ValueError(
+                f'CSpk histogram file is missing required columns {missing_columns}: {histogram_path}'
+            )
+
+        histogram_rows = list(reader)
+
+    if len(histogram_rows) == 0:
+        raise ValueError(f'CSpk histogram file has no data rows: {histogram_path}')
+
+    bin_centers_ms = 1000 * np.array([
+        float(row[histogram_time_column]) for row in histogram_rows
+    ], dtype=float)
+    counts = np.array([
+        float(row[histogram_count_column]) for row in histogram_rows
+    ], dtype=float)
+
+    if not np.any(np.isfinite(bin_centers_ms)) or not np.any(np.isfinite(counts)):
+        raise ValueError(f'CSpk histogram file contains no finite data: {histogram_path}')
+
+    metadata_row = load_json(metadata_path)
+    missing_metadata = [
+        column for column in (metadata_bin_size_column, metadata_laser_duration_column)
+        if column not in metadata_row or metadata_row[column] == ''
+    ]
+    if missing_metadata:
+        raise ValueError(
+            f'CSpk metadata file is missing required fields {missing_metadata}: {metadata_path}'
+        )
+
+    bin_size_ms = 1000 * float(metadata_row[metadata_bin_size_column])
+    laser_duration_ms = 1000 * float(metadata_row[metadata_laser_duration_column])
+
+    sort_idx = np.argsort(bin_centers_ms)
+    bin_centers_ms = bin_centers_ms[sort_idx]
+    counts = counts[sort_idx]
+
+    positive_counts = np.clip(counts, a_min=0, a_max=None)
+    if np.nansum(positive_counts) <= 0:
+        raise ValueError(f'CSpk histogram counts must contain positive values: {histogram_path}')
+
+    if bin_centers_ms.size > 1:
+        observed_bin_size_ms = float(np.nanmedian(np.diff(bin_centers_ms)))
+        if not np.isfinite(observed_bin_size_ms) or observed_bin_size_ms <= 0:
+            raise ValueError(f'CSpk histogram bin centers are not regularly spaced: {histogram_path}')
+        if not np.isclose(observed_bin_size_ms, bin_size_ms, atol=1e-6):
+            raise ValueError(
+                'CSpk histogram bin size does not match metadata: '
+                f'{observed_bin_size_ms} ms in histogram vs {bin_size_ms} ms in metadata'
+            )
+
+    return {
+        'histogram_path': histogram_path,
+        'metadata_path': metadata_path,
+        'bin_centers_ms': bin_centers_ms,
+        'counts': positive_counts,
+        'bin_size_ms': bin_size_ms,
+        'laser_duration_ms': laser_duration_ms,
+    }
+
+
+def weighted_median_from_histogram(bin_centers, weights):
+    finite_mask = np.isfinite(bin_centers) & np.isfinite(weights)
+    finite_bin_centers = np.asarray(bin_centers, dtype=float)[finite_mask]
+    finite_weights = np.asarray(weights, dtype=float)[finite_mask]
+    if finite_bin_centers.size == 0:
+        raise ValueError('Cannot compute a weighted median from an empty histogram.')
+
+    positive_weights = np.clip(finite_weights, a_min=0, a_max=None)
+    total_weight = np.sum(positive_weights)
+    if total_weight <= 0:
+        raise ValueError('Cannot compute a weighted median from non-positive histogram weights.')
+
+    sort_idx = np.argsort(finite_bin_centers)
+    sorted_centers = finite_bin_centers[sort_idx]
+    sorted_weights = positive_weights[sort_idx]
+    cumulative_weights = np.cumsum(sorted_weights)
+    median_idx = np.searchsorted(cumulative_weights, total_weight / 2, side='left')
+    median_idx = min(median_idx, sorted_centers.size - 1)
+    return sorted_centers[median_idx]
+
+
+def build_expected_cspk_histogram(event_times_ms, bin_edges_ms, cspk_histogram_data, use_laser_offset):
+    finite_event_times = finite_array(event_times_ms)
+    if finite_event_times.size == 0:
+        raise ValueError('No finite laser event times were found for the convolution-based CSpk plot.')
+
+    if len(bin_edges_ms) < 2:
+        raise ValueError('At least two bin edges are required to build the expected CSpk histogram.')
+
+    analysis_bin_width_ms = float(bin_edges_ms[1] - bin_edges_ms[0])
+    if not np.allclose(np.diff(bin_edges_ms), analysis_bin_width_ms):
+        raise ValueError('Histogram bin edges must have a constant bin width for convolution.')
+
+    event_counts, _ = np.histogram(finite_event_times, bins=bin_edges_ms)
+    event_bin_centers = bin_edges_ms[:-1] + analysis_bin_width_ms / 2
+
+    kernel_time_ms = np.array(cspk_histogram_data['bin_centers_ms'], dtype=float)
+    if use_laser_offset:
+        kernel_time_ms = kernel_time_ms - cspk_histogram_data['laser_duration_ms']
+    kernel_counts = np.array(cspk_histogram_data['counts'], dtype=float)
+
+    kernel_min = analysis_bin_width_ms * np.floor(np.nanmin(kernel_time_ms) / analysis_bin_width_ms)
+    kernel_max = analysis_bin_width_ms * np.ceil(np.nanmax(kernel_time_ms) / analysis_bin_width_ms)
+    kernel_bin_centers = np.arange(kernel_min, kernel_max + analysis_bin_width_ms * 0.5, analysis_bin_width_ms)
+    if kernel_bin_centers.size == 0:
+        raise ValueError('The external CSpk histogram produced an empty kernel after rebinning.')
+
+    kernel_weights = np.interp(kernel_bin_centers, kernel_time_ms, kernel_counts, left=0.0, right=0.0)
+    kernel_weights = np.clip(kernel_weights, a_min=0, a_max=None)
+    kernel_sum = np.nansum(kernel_weights)
+    if kernel_sum <= 0:
+        raise ValueError('The rebinned CSpk histogram kernel is empty after interpolation.')
+    kernel_weights = kernel_weights / kernel_sum
+
+    expected_counts = np.convolve(event_counts, kernel_weights, mode='full')
+    expected_bin_centers = (
+        event_bin_centers[0] + kernel_bin_centers[0] + analysis_bin_width_ms * np.arange(expected_counts.size)
+    )
+
+    return {
+        'event_counts': event_counts,
+        'event_bin_centers': event_bin_centers,
+        'kernel_bin_centers': kernel_bin_centers,
+        'kernel_weights': kernel_weights,
+        'expected_counts': expected_counts,
+        'expected_bin_centers': expected_bin_centers,
+    }
 
 
 def get_stance_phase_reference_paw(experiment_name, animal, reference_mode, left_animals, right_animals, bilateral_animals):
