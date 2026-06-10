@@ -1083,7 +1083,7 @@ class loco_class:
                     perc25 = np.round(0.25*(st_strides_mat[p][s,1,4]-st_strides_mat[p][s,0,4]))
                     pt_next = sw_pts_mat[p_sl[p]][np.logical_and(sw_pts_mat[p_sl[p]][:,0,4]>=(st_strides_mat[p][s,0,4]-perc25),(sw_pts_mat[p_sl[p]][:,0,4]<=sw_pts_mat[p][s,0,4])),0,4]
                     if len(pt_next) == 0:
-                        ds[s] = 0
+                        ds[s] = np.nan      #0
                     else:
                         ds[s] = (pt_next[0]-st_strides_mat[p][s,0,4])/(st_strides_mat[p][s,1,4]-st_strides_mat[p][s,0,4])*100
                 param_mat.append(ds)
