@@ -1,6 +1,352 @@
 import numpy as np
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
 from scipy.interpolate import CubicSpline
+
+
+def save_figure_multi_format(figure, directory, filename, dpi=128, bbox_inches=None):
+    """Save a figure as PNG plus EPS/SVG copies in dedicated subfolders."""
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+
+    eps_path = os.path.join(directory, 'eps')
+    svg_path = os.path.join(directory, 'svg')
+    if not os.path.exists(eps_path):
+        os.mkdir(eps_path)
+    if not os.path.exists(svg_path):
+        os.mkdir(svg_path)
+
+    filename_root = os.path.splitext(filename)[0]
+    save_kwargs = {'dpi': dpi}
+    if bbox_inches is not None:
+        save_kwargs['bbox_inches'] = bbox_inches
+
+    figure.savefig(os.path.join(directory, filename_root + '.png'), **save_kwargs)
+    figure.savefig(os.path.join(eps_path, filename_root + '.eps'), **save_kwargs)
+    figure.savefig(os.path.join(svg_path, filename_root + '.svg'), **save_kwargs)
+
+
+def add_output_suffix(filename, suffix):
+    if not suffix:
+        return filename
+    filename_root, filename_ext = os.path.splitext(filename)
+    return f'{filename_root}{suffix}{filename_ext}'
+
+
+def get_stance_phase_reference_suffix(reference_mode):
+    if reference_mode == 'slow_hind':
+        return ''
+    if reference_mode == 'ipsi_hind':
+        return '_ipsi_hind_ref'
+    raise ValueError(f'Unknown stance_phase_reference_mode: {reference_mode}')
+
+
+def get_phase_st_output_filename(filename, reference_mode):
+    return add_output_suffix(filename, get_stance_phase_reference_suffix(reference_mode))
+
+
+def sanitize_filename_label(label):
+    return label.replace(' ', '_')
+
+
+def get_stance_phase_reference_paw(experiment_name, animal, reference_mode, left_animals, right_animals, bilateral_animals):
+    if reference_mode == 'slow_hind':
+        ref_paw = 3
+        if ('contra' in experiment_name and animal in right_animals) or ('ipsi' in experiment_name and animal in left_animals) or ('ipsi' in experiment_name and animal in bilateral_animals):
+            ref_paw = 1
+        return ref_paw
+
+    if reference_mode == 'ipsi_hind':
+        if experiment_name == 'WT':
+            return 1
+        if animal in left_animals:
+            return 3
+        if animal in right_animals or animal in bilateral_animals:
+            return 1
+        return get_stance_phase_reference_paw(experiment_name, animal, 'slow_hind', left_animals, right_animals, bilateral_animals)
+
+    raise ValueError(f'Unknown stance_phase_reference_mode: {reference_mode}')
+
+
+def get_paw_plot_labels(experiment_name, experiment_names, paws):
+    """Return display and filename labels for the current paw ordering."""
+    if 'contra' in experiment_name or 'ipsi' in experiment_name:
+        return ['FF', 'HF', 'FS', 'HS'], ['FF', 'HF', 'FS', 'HS']
+    if any('right' in element for element in experiment_names) and any('left' in element for element in experiment_names):
+        return ['FF', 'HF', 'FS', 'HS'], ['FF', 'HF', 'FS', 'HS']
+    if 'right' in experiment_name:
+        return ['FF', 'HF', 'FS', 'HS'], ['FF', 'HF', 'FS', 'HS']
+    if 'left' in experiment_name:
+        return ['FS', 'HS', 'FF', 'HF'], ['FS', 'HS', 'FF', 'HF']
+    return list(paws), list(paws)
+
+
+def get_experiment_name_for_path(path, experiment_names):
+    for experiment_name in experiment_names:
+        if experiment_name in path:
+            return experiment_name
+    return os.path.basename(os.path.normpath(path))
+
+
+def get_path_color(experiment_name, path_index, experiment_colors_dict, color_cycle=None):
+    if color_cycle is None:
+        color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    if experiment_name in experiment_colors_dict:
+        return experiment_colors_dict[experiment_name]
+    for label, color in experiment_colors_dict.items():
+        if label in experiment_name or experiment_name in label:
+            return color
+    return color_cycle[path_index % len(color_cycle)]
+
+
+def get_summary_limb_order(experiment_names, paws):
+    if any(('contra' in name) or ('ipsi' in name) for name in experiment_names):
+        return [0, 2, 1, 3], ['FF', 'FS', 'HF', 'HS']
+    if any('right' in name for name in experiment_names) and any('left' in name for name in experiment_names):
+        return [0, 2, 1, 3], ['FF', 'FS', 'HF', 'HS']
+    if any('right' in name for name in experiment_names):
+        return [0, 2, 1, 3], ['FF', 'FS', 'HF', 'HS']
+    if any('left' in name for name in experiment_names):
+        return [2, 0, 3, 1], ['FF', 'FS', 'HF', 'HS']
+    return list(range(len(paws))), list(paws)
+
+
+def normalize_summary_scatter_paw_label(label):
+    alias_map = {
+        'FR': 'FR',
+        'FL': 'FL',
+        'HR': 'HR',
+        'HL': 'HL',
+        'FF': 'FR',
+        'FS': 'FL',
+        'HF': 'HR',
+        'HS': 'HL',
+    }
+    return alias_map.get(label, label)
+
+
+def compare_metric_groups(reference_values, comparison_values, statistics_test, paired=None, reference_names=None, comparison_names=None):
+    reference_values = np.asarray(reference_values, dtype=float)
+    comparison_values = np.asarray(comparison_values, dtype=float)
+
+    if paired is None:
+        paired = (
+            reference_names is not None
+            and comparison_names is not None
+            and list(reference_names) == list(comparison_names)
+            and len(reference_values) == len(comparison_values)
+        )
+
+    if paired:
+        valid_mask = np.isfinite(reference_values) & np.isfinite(comparison_values)
+        reference_clean = reference_values[valid_mask]
+        comparison_clean = comparison_values[valid_mask]
+        if len(reference_clean) == 0:
+            return np.nan, 'Wilcoxon' if statistics_test != 'ttest' else 'paired t-test'
+        try:
+            if statistics_test == 'ttest':
+                return st.ttest_rel(reference_clean, comparison_clean).pvalue, 'paired t-test'
+            return st.wilcoxon(reference_clean, comparison_clean).pvalue, 'Wilcoxon'
+        except ValueError:
+            return np.nan, 'Wilcoxon' if statistics_test != 'ttest' else 'paired t-test'
+
+    reference_clean = reference_values[np.isfinite(reference_values)]
+    comparison_clean = comparison_values[np.isfinite(comparison_values)]
+    if len(reference_clean) == 0 or len(comparison_clean) == 0:
+        return np.nan, 'Mann-Whitney U' if statistics_test != 'ttest' else 't-test'
+    if statistics_test == 'ttest':
+        return st.ttest_ind(reference_clean, comparison_clean, equal_var=False).pvalue, 't-test'
+    return st.mannwhitneyu(reference_clean, comparison_clean, alternative='two-sided').pvalue, 'Mann-Whitney U'
+
+
+def compare_metric_against_zero(values, statistics_test):
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        return np.nan, 'Wilcoxon vs 0' if statistics_test != 'ttest' else 'one-sample t-test'
+    try:
+        if statistics_test == 'ttest':
+            return st.ttest_1samp(values, 0.0, nan_policy='omit').pvalue, 'one-sample t-test'
+        return st.wilcoxon(values, zero_method='wilcox').pvalue, 'Wilcoxon vs 0'
+    except ValueError:
+        return np.nan, 'Wilcoxon vs 0' if statistics_test != 'ttest' else 'one-sample t-test'
+
+
+def pvalue_to_label(pvalue):
+    if pvalue is None or not np.isfinite(pvalue):
+        return 'n.s.'
+    if pvalue < 0.001:
+        return '**'
+    if pvalue < 0.05:
+        return '*'
+    return 'n.s.'
+
+
+def pvalue_to_annotation(pvalue):
+    if pvalue is None or not np.isfinite(pvalue):
+        return 'n.s.'
+    if pvalue < 0.001:
+        return '**'
+    if pvalue < 0.05:
+        return '*'
+    return f'p={pvalue:.2f}'
+
+
+def annotation_fontsize(annotation_text):
+    if annotation_text in {'*', '**'}:
+        return 14
+    if annotation_text.startswith('p='):
+        return 9
+    return 10
+
+
+def plot_limb_metric_scatter(metric_by_path, path_display_names, path_colors, summary_colors_by_path, limb_labels, limb_colors, ylabel, stat_results=None, stat_mode='between_paths', fig_size=(5, 3)):
+    scatter_width = max(3.0, fig_size[0] * (len(limb_labels) / 4))
+    fig, ax = plt.subplots(figsize=(scatter_width, fig_size[1]), tight_layout=True)
+    n_paths = len(path_display_names)
+    x_positions = np.arange(1, len(limb_labels) + 1)
+    offsets = np.linspace(-0.25, 0.25, n_paths) if n_paths > 1 else np.array([0.0])
+
+    for limb_idx, limb_label in enumerate(limb_labels):
+        for path_idx, path_name in enumerate(path_display_names):
+            values = np.asarray(metric_by_path[path_idx][limb_idx], dtype=float)
+            valid_mask = np.isfinite(values)
+            values = values[valid_mask]
+            x_coord = x_positions[limb_idx] + offsets[path_idx]
+            if len(values) == 0:
+                continue
+            ax.scatter(
+                np.full(len(values), x_coord),
+                values,
+                s=30,
+                c=summary_colors_by_path[path_idx][limb_idx],
+                edgecolors=summary_colors_by_path[path_idx][limb_idx],
+                linewidth=0.8,
+                alpha=0.9,
+                zorder=3,
+            )
+            ax.plot(
+                [x_coord - 0.10, x_coord + 0.10],
+                [np.nanmean(values), np.nanmean(values)],
+                color=summary_colors_by_path[path_idx][limb_idx],
+                linewidth=2.5,
+                zorder=4,
+            )
+
+    ax.axhline(y=0, color='k', linestyle='--', linewidth=0.5)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(limb_labels)
+    ax.set_ylabel(ylabel, fontsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+
+    all_values = []
+    for path_metrics in metric_by_path:
+        for limb_metrics in path_metrics:
+            valid_values = np.asarray(limb_metrics, dtype=float)
+            valid_values = valid_values[np.isfinite(valid_values)]
+            if len(valid_values) > 0:
+                all_values.append(valid_values)
+    if all_values:
+        global_min = min(np.min(values) for values in all_values)
+        global_max = max(np.max(values) for values in all_values)
+    else:
+        global_min, global_max = -1, 1
+    y_range = max(global_max - global_min, 1)
+
+    if stat_results is not None and len(stat_results) > 0 and stat_mode == 'between_paths':
+        for limb_idx in range(len(limb_labels)):
+            limb_values = []
+            for path_metrics in metric_by_path:
+                values = np.asarray(path_metrics[limb_idx], dtype=float)
+                values = values[np.isfinite(values)]
+                if len(values) > 0:
+                    limb_values.append(values)
+            limb_max = max((np.max(values) for values in limb_values), default=global_max)
+            for comparison_idx, pvalues in enumerate(stat_results):
+                if limb_idx >= len(pvalues):
+                    continue
+                pvalue = pvalues[limb_idx]
+                label = pvalue_to_annotation(pvalue)
+                x1 = x_positions[limb_idx] + offsets[0]
+                x2 = x_positions[limb_idx] + offsets[comparison_idx + 1]
+                y = limb_max + y_range * (0.08 + 0.10 * comparison_idx)
+                ax.plot([x1, x2], [y, y], color='k', linewidth=0.7)
+                ax.text((x1 + x2) / 2, y + y_range * 0.02, label, ha='center', va='bottom', fontsize=annotation_fontsize(label))
+        top_padding = y_range * (0.22 + 0.10 * max(len(stat_results) - 1, 0))
+        ax.set_ylim(global_min - 0.08 * y_range, global_max + top_padding)
+    elif stat_results is not None and len(stat_results) > 0 and stat_mode == 'vs_zero':
+        for limb_idx in range(len(limb_labels)):
+            limb_values = []
+            for path_metrics in metric_by_path:
+                values = np.asarray(path_metrics[limb_idx], dtype=float)
+                values = values[np.isfinite(values)]
+                if len(values) > 0:
+                    limb_values.append(values)
+            limb_max = max((np.max(values) for values in limb_values), default=global_max)
+            for path_idx, pvalues in enumerate(stat_results):
+                if limb_idx >= len(pvalues):
+                    continue
+                x = x_positions[limb_idx] + offsets[path_idx]
+                y = limb_max + y_range * (0.08 + 0.08 * path_idx)
+                label = pvalue_to_annotation(pvalues[limb_idx])
+                ax.text(x, y, label, ha='center', va='bottom', fontsize=annotation_fontsize(label))
+        top_padding = y_range * (0.18 + 0.08 * max(len(stat_results) - 1, 0))
+        ax.set_ylim(global_min - 0.08 * y_range, global_max + top_padding)
+
+    return fig
+
+
+def plot_front_paws_average(param_values, animal_ids, ylabel, title, fig_size, split_start, split_duration, stim_start, stim_duration, baseline_centered, n_trials, paw_colors, paws, y_limits=None):
+    fig, ax = plt.subplots(figsize=fig_size, tight_layout=True)
+    if y_limits is not None:
+        ax.set_ylim(y_limits)
+        rectangle_y = y_limits[0]
+        rectangle_height = y_limits[1] - y_limits[0]
+    else:
+        selected_values = param_values[animal_ids, [0, 2], :]
+        rectangle_y = np.nanmin(selected_values)
+        rectangle_height = np.nanmax(selected_values) - rectangle_y
+    rectangle = plt.Rectangle(
+        (split_start - 0.5, rectangle_y),
+        split_duration,
+        rectangle_height,
+        fc='lightgray',
+        alpha=0.3,
+    )
+    ax.add_patch(rectangle)
+    ax.axvline(x=stim_start - 0.5, color='k', linestyle='-', linewidth=0.5)
+    ax.axvline(x=stim_start + stim_duration - 0.5, color='k', linestyle='-', linewidth=0.5)
+    if baseline_centered:
+        ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
+
+    x_values = np.arange(1, n_trials + 1)
+    for paw_idx in [0, 2]:
+        paw_data = param_values[animal_ids, paw_idx, :]
+        paw_mean = np.nanmean(paw_data, axis=0)
+        paw_sem = np.nanstd(paw_data, axis=0) / np.sqrt(len(animal_ids))
+        ax.plot(x_values, paw_mean, color=paw_colors[paw_idx], linewidth=3, label=paws[paw_idx])
+        ax.fill_between(x_values, paw_mean - paw_sem, paw_mean + paw_sem, color=paw_colors[paw_idx], alpha=0.35)
+
+    ax.set_xlabel('Trial', fontsize=28)
+    ax.set_ylabel(ylabel, fontsize=28)
+    ax.set_title(title, fontsize=24)
+    ax.tick_params(axis='both', which='major', labelsize=24)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.legend(frameon=False)
+    return fig
+
+
+def get_param_output_name(param_name, reference_mode):
+    if param_name == 'phase_st':
+        return get_phase_st_output_filename(param_name, reference_mode)
+    return param_name
+
+
 def get_baseline_scatter_ylim(param_name, use_uniform_ranges, bars_ranges):
     if not use_uniform_ranges:
         return None
