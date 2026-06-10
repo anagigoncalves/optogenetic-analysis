@@ -7,14 +7,14 @@ np.warnings.filterwarnings('ignore')
 
 conditions = ['25percent', '50percent', '75percent']
 networks = ['Tailbase tests', 'CM tests', 'HR tests']
-animals = ['MC18089', 'MC18090', 'MC18091']
+animals = ['MC18089', 'MC18090', 'MC18091', 'VIV40922', 'VIV40923', 'VIV40924']
 session = 1
 
 st_duration_trials = np.zeros(10)
 sw_duration_trials = np.zeros(10)
 for count_n, network in enumerate(networks):
     for count_c, condition in enumerate(conditions):
-        path = os.path.join('C:\\Users\\Ana\\Documents\\PhD\\Projects\\Online Stimulation Treadmill\\Tests', network, condition + '\\')
+        path = os.path.join('C:\\Users\\Ana\\Desktop\\Data OPTO', network, condition + '\\')
         import online_tracking_class
         otrack_class = online_tracking_class.otrack_class(path)
         import locomotion_class
@@ -26,14 +26,13 @@ for count_n, network in enumerate(networks):
             # LOAD DATA FOR BENCHMARK ANALYSIS
             [st_led_on, sw_led_on, frame_counter_session] = otrack_class.load_benchmark_files(animal)
             # READ OFFLINE PAW EXCURSIONS
-            final_tracks_trials = otrack_class.get_offtrack_paws(loco, animal, session)
+            [final_tracks_trials, st_strides_trials, sw_strides_trials] = otrack_class.get_offtrack_paws(loco, animal, session)
             
             st_duration_loop = np.zeros(len(trials))
             sw_duration_loop = np.zeros(len(trials))
             for count_t, trial in enumerate(trials):
-                [st_strides_mat, sw_pts_mat] = loco.get_sw_st_matrices(final_tracks_trials[count_t], 1)
-                st_duration_loop[count_t] = np.nanmean(st_strides_mat[0][:, 1, 0]-st_strides_mat[0][:, 0, 0])/1000
-                sw_duration_loop[count_t] = np.nanmean(st_strides_mat[0][:, 1, 0]-sw_pts_mat[0][:, 0, 0])/1000
+                st_duration_loop[count_t] = np.nanmean(st_strides_trials[count_t][0][:, 1, 0]-st_strides_trials[count_t][0][:, 0, 0])/1000
+                sw_duration_loop[count_t] = np.nanmean(st_strides_trials[count_t][0][:, 1, 0]-sw_strides_trials[count_t][0][:, 0, 0])/1000
             st_duration_trials = np.vstack([st_duration_trials, st_duration_loop])
             sw_duration_trials = np.vstack([sw_duration_trials, sw_duration_loop])
 
@@ -55,7 +54,7 @@ plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
-plt.savefig('C:\\Users\\Ana\\Documents\\PhD\\Projects\\Online Stimulation Treadmill\\Benchmark plots\\stance_duration.png', dpi=128)
+plt.savefig('C:\\Users\\Ana\\Desktop\\Data OPTO\\Benchmark plots\\stance_duration.png', dpi=128)
 
 fig, ax = plt.subplots(tight_layout=True, figsize=(7,5))
 for i in range(len(trials_reshape)):
@@ -66,11 +65,11 @@ ax.set_xticklabels(['0.175', '0.275', '0.375', '0.175 left\n0.375 right', '0.375
 ax.set_title('Swing duration', fontsize=16)
 ax.set_ylabel('Swing duration (s)', fontsize=14)
 ax.set_xlabel('Speed (m/s)', fontsize=14)
-ax.set_ylim([0.05, 0.32])
+ax.set_ylim([0.05, 0.16])
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
-plt.savefig('C:\\Users\\Ana\\Documents\\PhD\\Projects\\Online Stimulation Treadmill\\Benchmark plots\\swing_duration.png', dpi=128)
+plt.savefig('C:\\Users\\Ana\\Desktop\\Data OPTO\\Benchmark plots\\swing_duration.png', dpi=128)
 
 

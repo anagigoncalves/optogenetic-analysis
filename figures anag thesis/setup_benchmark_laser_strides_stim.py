@@ -4,10 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 np.warnings.filterwarnings('ignore')
 
-path = 'J:\\Data OPTO\\CM tests\\75percent\\'
+path = 'C:\\Users\\Ana\\Desktop\\\Data OPTO\\CM tests\\75percent\\'
 condition = path.split('\\')[-2]
-animals = ['MC18089', 'MC18090', 'MC18091']
-colors_animals = ['black', 'teal', 'orange']
+animals = ['MC18089', 'MC18090', 'MC18091', 'VIV40922', 'VIV40923', 'VIV40924']
+colors_animals = ['blue', 'orange', 'darkgreen', 'crimson', 'purple', 'gray']
 session = 1
 if not os.path.exists(os.path.join(path, 'plots')):
     os.mkdir(os.path.join(path, 'plots'))
@@ -36,18 +36,31 @@ for count_a, animal in enumerate(animals):
     for i in range(len(trials_reshape)):
         for count_t, trial in enumerate(trials_reshape[i, :]):
             #stim phase
-            [light_onset_phase_st_trial, light_offset_phase_st_trial, stim_nr_st, stride_nr_st] = \
-                otrack_class.laser_presentation_phase(trial, trials, 'stance', offtracks_st, offtracks_sw, laser_on,
-                                                      timestamps_session, final_tracks_phase, 0)
+            if animal == 'MC18089' or animal == 'MC18090' or animal == 'MC18091': #use laser
+                [light_onset_phase_st_trial, light_offset_phase_st_trial, stim_nr_st, stride_nr_st] = \
+                    otrack_class.laser_presentation_phase(trial, trials, 'stance', offtracks_st, offtracks_sw, laser_on,
+                                                          timestamps_session, final_tracks_phase, 0)
+            else: #use LED
+                [light_onset_phase_st_trial, light_offset_phase_st_trial, stim_nr_st, stride_nr_st] = \
+                    otrack_class.light_presentation_phase(trial, trials, 'stance', offtracks_st, offtracks_sw, st_led_on,
+                                                          sw_led_on,
+                                                          timestamps_session, final_tracks_phase, 0)
             [fraction_strides_stim_st_on, fraction_strides_stim_st_off] = \
-                otrack_class.plot_laser_presentation_phase_benchmark(light_onset_phase_st_trial,
-                                                                     light_offset_phase_st_trial, 'stance',
-                                                                     16, stim_nr_st,
-                                                                     stride_nr_st, 'Greys',
-                                                                     path_save, 'test')
-            [light_onset_phase_sw_trial, light_offset_phase_sw_trial, stim_nr_sw, stride_nr_sw] = \
-                otrack_class.light_presentation_phase(trial, trials, 'swing', offtracks_st, offtracks_sw, st_led_on,  sw_led_on,
-                                                      timestamps_session, final_tracks_phase, 0)
+                    otrack_class.plot_laser_presentation_phase_benchmark(light_onset_phase_st_trial,
+                                                                         light_offset_phase_st_trial, 'stance',
+                                                                         16, stim_nr_st,
+                                                                         stride_nr_st, 'Greys',
+                                                                         path_save, 'test')
+            if animal == 'MC18089' or animal == 'MC18090' or animal == 'MC18091': #use LED
+                [light_onset_phase_sw_trial, light_offset_phase_sw_trial, stim_nr_sw, stride_nr_sw] = \
+                    otrack_class.light_presentation_phase(trial, trials, 'swing', offtracks_st, offtracks_sw, st_led_on,  sw_led_on,
+                                                          timestamps_session, final_tracks_phase, 0)
+            else: #use laser
+                [light_onset_phase_sw_trial, light_offset_phase_sw_trial, stim_nr_sw, stride_nr_sw] = \
+                    otrack_class.light_presentation_phase(trial, trials, 'swing', offtracks_st, offtracks_sw,
+                                                          st_led_on,
+                                                          sw_led_on,
+                                                          timestamps_session, final_tracks_phase, 0)
             [fraction_strides_stim_sw_on, fraction_strides_stim_sw_off] = \
                 otrack_class.plot_laser_presentation_phase_benchmark(light_onset_phase_sw_trial,
                                                                      light_offset_phase_sw_trial, 'swing',

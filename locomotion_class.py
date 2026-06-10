@@ -32,16 +32,21 @@ import nptdms as tdms
 
 class loco_class:
     
-    def __init__(self,path):
+    def __init__(self,path, pixel_to_mm = 1/3.3, floor_factor = 268):
         self.path = path
         self.delim = self.path[-1]
         path_split = self.path.split(self.delim)
         self.experiment = path_split[-3]
-        self.pixel_to_mm = 1/3.3
+        self.pixel_to_mm = pixel_to_mm
+        #self.pixel_to_mm = 1/3.3            # real-time setup
+        #self.pixel_to_mm = 1/1.955            # Dana's setup
+        #self.pixel_to_mm = 1/1.98            # Jovin's setup
         self.sr = 333.33 #sampling rate of behavior camera for treadmill
         self.sr_F = 30
         self.my_dpi = 96 #resolution for plotting
-        self.floor = 268*self.pixel_to_mm
+        self.floor = floor_factor*self.pixel_to_mm
+        # self.floor = 268*self.pixel_to_mm      # real-time setup
+        # self.floor = 152*self.pixel_to_mm         # Miniscope setup ?
         self.trial_time = 60 #seconds
 
     @staticmethod
@@ -53,7 +58,253 @@ class loco_class:
         fp = A[~np.isnan(A)]
         x  = np.isnan(A).ravel().nonzero()[0]
         A[np.isnan(A)] = np.interp(x, xp, fp)
+        not_ok = np.sum(np.isnan(A))
+        if not_ok > 0:
+            print('Warning: ' + str(not_ok) + ' NaNs were not interpolated')
         return A
+
+    def inpaint_nans_cubic_spline(self, A):
+        """Interpolates NaNs in 2D numpy arrays using cubic spline (row-wise)
+        Input: A (numpy array, 2D)"""
+        from scipy.interpolate import CubicSpline
+
+        A = np.array(A, dtype=float)  # Ensure float for NaNs
+        for i in range(A.shape[0]):
+            row = A[i, :]
+            time = np.arange(len(row))
+            valid_idx = ~np.isnan(row)
+            if np.sum(valid_idx) > 1:  # Need at least 2 points for spline
+                cs = CubicSpline(time[valid_idx], row[valid_idx], bc_type='clamped')
+                A[i, np.isnan(row)] = cs(time[np.isnan(row)])
+            else:
+                print(f'Warning: Row {i} has insufficient valid points for cubic spline.')
+        not_ok = np.sum(np.isnan(A))
+        if not_ok > 0:
+            print('Warning: ' + str(not_ok) + ' NaNs were not interpolated')
+        return A
+    
+
+    def compute_continuous_sym_gaitparam(self, param_trial, st_strides, p1, p2):
+        """Compute symmetry value for each stride with reference to first paw you input.
+        For each trial (or list with 4 paws)
+        Inputs:
+        param_trial: list with the param values for one trial and all strides
+        st_strides: list with strides for one trial
+        p1: paw to compute the parameter (FR, HR, FL, HL)
+        p2: paw to relate to p1, to compute the parameter as symmetry (FR, HR, FL, HL)"""
+        if p1 == 'FR':
+            p1_idx = 0
+        if p1 == 'HR':
+            p1_idx = 1
+        if p1 == 'FL':
+            p1_idx = 2
+        if p1 == 'HL':
+            p1_idx = 3
+        if p2 == 'FR':
+            p2_idx = 0
+        if p2 == 'HR':
+            p2_idx = 1
+        if p2 == 'FL':
+            p2_idx = 2
+        if p2 == 'HL':
+            p2_idx = 3
+        sl_p1 = param_trial[p1_idx]
+        sl_p2 = param_trial[p2_idx]
+        strides_p1 = st_strides[p1_idx]
+        strides_p2 = st_strides[p2_idx]
+        # get events between the strides
+        param = np.zeros(np.shape(strides_p1)[0])
+        param[:] = np.nan
+        param_time = np.zeros(np.shape(strides_p1)[0])
+        param_time[:] = np.nan
+        for s in range(np.shape(strides_p1)[0]):
+            stride_contra = \
+                np.where((strides_p2[:, 0, 0] > strides_p1[s, 0, 0]) & (strides_p2[:, 0, 0] < strides_p1[s, 1, 0]))[0]
+            if len(stride_contra) == 1:  # one event in the stride
+                param[s] = sl_p1[s] - sl_p2[stride_contra]
+            if len(stride_contra) > 1:  # more than two events in a stride
+                param[s] = sl_p1[s] - np.nanmean(sl_p2[stride_contra])
+        return param
+
+    def get_symmetry_laser_phase_offtracks_df(self, animal, session, trials, final_tracks_phase, event, laser_on,
+            timestamps_session, offtracks_st, offtracks_sw, param_sym_name):
+        """Adds to the offtracks dataframe (information for each stride tracked post-hoc),
+        the symmetry value for that stride and the laser phase. Does this considering stance or swing stimulation,
+        and which gait parameter values you want to measure. Does it for all trials in the session.
+        Inputs:
+            animal: (str) animal name
+            session: (int) session number
+            trials: (array) trial list
+            final_tracks_phase: (list) tracks of the four paws in phase (just X axis)
+            event: (str) stance or swing
+            laser_on: dataframe with information when laser was on
+            timestamps_session: (list) camera frame times
+            offtracks_st: dataframe with stride information for stance periods
+            offtracks_sw: dataframe with stride information for swing periods
+            param_sym_name: (list) of strings with param names"""
+        filelist = self.get_track_files(animal, session)
+        param_list = {}
+        for count_p, param in enumerate(param_sym_name):
+            param_list_trials_extend = []
+            for count_trial, f in enumerate(filelist):
+                [final_tracks, tracks_tail, joints_wrist, joints_elbow, ear, bodycenter] = self.read_h5(f, 0.9, 0)
+                [st_strides_mat, sw_pts_mat] = self.get_sw_st_matrices(final_tracks, 1)
+                paws_rel = self.get_paws_rel(final_tracks, 'X')
+                param_mat = self.compute_gait_param(bodycenter, final_tracks, paws_rel, st_strides_mat, sw_pts_mat, param)
+                param_mat_sym = self.compute_continuous_sym_gaitparam(param_mat, st_strides_mat, 'FR', 'FL')
+                param_list_trials_extend.extend(param_mat_sym)
+            param_list[param] = param_list_trials_extend
+        offtracks_st = offtracks_st.assign(**param_list)
+        offtracks_sw = offtracks_sw.assign(**param_list)
+        light_onset_phase_list = []
+        light_offset_phase_list = []
+        paw_idx = 0  # always the FR paw
+        for count_trial, trial in enumerate(trials):
+            trial_idx = np.where(trials == trial)[0][0]
+            final_tracks_phase_paw = self.inpaint_nans(final_tracks_phase[trial_idx][0, paw_idx, :])
+            if event == 'stance':
+                offtrack_trial = offtracks_st.loc[offtracks_st['trial'] == trial]
+                offtrack_other_trial = offtracks_sw.loc[offtracks_sw['trial'] == trial]
+                light_trial = laser_on.loc[laser_on['trial'] == trial]
+            if event == 'swing':
+                offtrack_trial = offtracks_sw.loc[offtracks_sw['trial'] == trial]
+                offtrack_other_trial = offtracks_st.loc[offtracks_st['trial'] == trial]
+                light_trial = laser_on.loc[laser_on['trial'] == trial]
+            light_onset_phase = np.zeros(len(offtrack_trial['time']))
+            light_onset_phase[:] = np.nan
+            light_offset_phase = np.zeros(len(offtrack_trial['time']))
+            light_offset_phase[:] = np.nan
+            for t in range(len(offtrack_trial['time'])):
+                # light started after stance onset and ended before swing (stance-like stim example)
+                full_hit_idx = np.where((offtrack_trial['time_off'].iloc[t] > light_trial['time_on'])
+                                        & (offtrack_trial['time_off'].iloc[t] > light_trial['time_off'])
+                                        & (offtrack_trial['time'].iloc[t] < light_trial['time_on'])
+                                        & (offtrack_trial['time'].iloc[t] < light_trial['time_off']))[0]
+                # light started before stance onset and ended before swing (stance-like stim example)
+                before_hit_idx = np.where((offtrack_trial['time'].iloc[t] < light_trial['time_off'])
+                                          & (offtrack_trial['time'].iloc[t] > light_trial['time_on'])
+                                          & (offtrack_trial['time_off'].iloc[t] > light_trial['time_on'])
+                                          & (offtrack_trial['time_off'].iloc[t] > light_trial['time_off']))[0]
+                if event == 'stance':
+                    # light started before stance and ended after swing (following period) (stance-like stim example)
+                    offset_other_idx = np.where((offtrack_other_trial['time'].iloc[t] > light_trial['time_on'])
+                                                & (offtrack_other_trial['time'].iloc[t] < light_trial['time_off'])
+                                                & (offtrack_trial['time'].iloc[t] > light_trial['time_on'])
+                                                & (offtrack_trial['time'].iloc[t] < light_trial['time_off']))[0]
+                    # light started after swing and ended before the other stance (following period) (stance-like stim example)
+                    full_other_idx = np.where((offtrack_other_trial['time_off'].iloc[t] > light_trial['time_on'])
+                                              & (offtrack_other_trial['time_off'].iloc[t] > light_trial['time_off'])
+                                              & (offtrack_other_trial['time'].iloc[t] < light_trial['time_on'])
+                                              & (offtrack_other_trial['time'].iloc[t] < light_trial['time_off']))[0]
+                if event == 'swing':
+                    if t < len(offtrack_trial['time']) - 1:
+                        # light started before stance and ended after swing (following period) (stance-like stim example)
+                        offset_other_idx = np.where((offtrack_other_trial['time'].iloc[t + 1] > light_trial['time_on'])
+                                                    & (offtrack_other_trial['time'].iloc[t + 1] < light_trial[
+                            'time_off'])
+                                                    & (offtrack_trial['time_off'].iloc[t] > light_trial['time_on'])
+                                                    & (offtrack_trial['time_off'].iloc[t] < light_trial['time_off'])
+                                                    & (offtrack_trial['time'].iloc[t] > light_trial['time_on'])
+                                                    & (offtrack_trial['time'].iloc[t] < light_trial['time_off']))[0]
+                        # light started after swing and ended before the other stance (following period) (stance-like stim example)
+                        full_other_idx = \
+                        np.where((offtrack_other_trial['time_off'].iloc[t + 1] > light_trial['time_on'])
+                                 & (offtrack_other_trial['time_off'].iloc[t + 1] > light_trial['time_off'])
+                                 & (offtrack_other_trial['time'].iloc[t + 1] < light_trial['time_on'])
+                                 & (offtrack_other_trial['time'].iloc[t + 1] < light_trial['time_off'])
+                                 & (offtrack_trial['time_off'].iloc[t] < light_trial['time_on'])
+                                 & (offtrack_trial['time_off'].iloc[t] < light_trial['time_off'])
+                                 & (offtrack_trial['time'].iloc[t] < light_trial['time_on'])
+                                 & (offtrack_trial['time'].iloc[t] < light_trial['time_on']))[0]
+                light_onset_arr = np.array(light_trial['time_on'])
+                light_offset_arr = np.array(light_trial['time_off'])
+                if len(full_hit_idx) > 0:  # for when light started in the right period and ended before period offset
+                    light_full_hit_onset = light_onset_arr[full_hit_idx[0]]
+                    light_full_hit_onset_idx = np.argmin(
+                        np.abs(light_full_hit_onset - timestamps_session[trial_idx]))
+                    # get phase of onset times
+                    # light came after stance or after swing
+                    if (light_full_hit_onset - offtrack_trial['time'].iloc[t]) > 0:
+                        light_onset_phase[t] = final_tracks_phase_paw[light_full_hit_onset_idx]
+                    # light came before stance (previous stride)
+                    elif (light_full_hit_onset - offtrack_trial['time'].iloc[
+                        t]) < 0 and event == 'stance':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_full_hit_onset_idx] - 1
+                    # light came before swing (same stride)
+                    else:
+                        light_onset_phase[t] = final_tracks_phase_paw[light_full_hit_onset_idx]
+                    light_full_hit_offset = light_offset_arr[full_hit_idx[0]]
+                    light_full_hit_offset_idx = np.argmin(
+                        np.abs(light_full_hit_offset - timestamps_session[trial_idx]))
+                    if (light_full_hit_offset - offtrack_trial['time'].iloc[t]) > 0:  # same as for onset
+                        light_offset_phase[t] = final_tracks_phase_paw[light_full_hit_offset_idx]
+                    elif (light_full_hit_offset - offtrack_trial['time'].iloc[t]) < 0 and event == 'stance':
+                        light_offset_phase[t] = final_tracks_phase_paw[light_full_hit_offset_idx] - 1
+                    else:
+                        light_offset_phase[t] = final_tracks_phase_paw[light_full_hit_offset_idx]
+                if len(before_hit_idx) > 0:
+                    light_before_hit_onset = light_onset_arr[before_hit_idx[0]]
+                    light_before_hit_onset_idx = np.argmin(
+                        np.abs(light_before_hit_onset - timestamps_session[trial_idx]))
+                    if (light_before_hit_onset - offtrack_trial['time'].iloc[t]) > 0:
+                        light_onset_phase[t] = final_tracks_phase_paw[light_before_hit_onset_idx]
+                    elif (light_before_hit_onset - offtrack_trial['time'].iloc[t]) < 0 and event == 'stance':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_before_hit_onset_idx] - 1
+                    else:
+                        light_onset_phase[t] = final_tracks_phase_paw[light_before_hit_onset_idx]
+                    light_before_hit_offset = light_offset_arr[before_hit_idx[0]]
+                    light_before_hit_offset_idx = np.argmin(
+                        np.abs(light_before_hit_offset - timestamps_session[trial_idx]))
+                    if (light_before_hit_offset - offtrack_trial['time'].iloc[t]) > 0:
+                        light_offset_phase[t] = final_tracks_phase_paw[light_before_hit_offset_idx]
+                    elif (light_before_hit_offset - offtrack_trial['time'].iloc[t]) < 0 and event == 'stance':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_before_hit_offset_idx] - 1
+                    else:
+                        light_onset_phase[t] = final_tracks_phase_paw[light_before_hit_offset_idx]
+                if len(offset_other_idx) > 0:
+                    light_offset_other_onset = light_onset_arr[offset_other_idx[0]]
+                    light_offset_other_onset_idx = np.argmin(
+                        np.abs(light_offset_other_onset - timestamps_session[trial_idx]))
+                    if (light_offset_other_onset - offtrack_trial['time'].iloc[t]) < 0 and event == 'swing':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_offset_other_onset_idx]
+                    if (light_offset_other_onset - offtrack_trial['time'].iloc[t]) < 0 and event == 'stance':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_offset_other_onset_idx] - 1
+                    light_offset_other_offset = light_offset_arr[offset_other_idx[0]]
+                    light_offset_other_offset_idx = np.argmin(
+                        np.abs(light_offset_other_offset - timestamps_session[trial_idx]))
+                    if (light_offset_other_offset - offtrack_trial['time'].iloc[t]) > 0 and event == 'stance':
+                        light_offset_phase[t] = final_tracks_phase_paw[light_offset_other_offset_idx]
+                    if t < len(offtrack_trial['time']) - 1:
+                        if (light_offset_other_offset - offtrack_other_trial['time'].iloc[
+                            t + 1]) > 0 and event == 'swing':
+                            light_offset_phase[t] = final_tracks_phase_paw[light_offset_other_offset_idx] + 1
+                if len(full_other_idx) > 0:
+                    light_full_other_onset = light_onset_arr[full_other_idx[0]]
+                    light_full_other_onset_idx = np.argmin(
+                        np.abs(light_full_other_onset - timestamps_session[trial_idx]))
+                    if (light_full_other_onset - offtrack_trial['time'].iloc[t]) > 0 and event == 'stance':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_full_other_onset_idx]
+                    if t < len(offtrack_trial['time']) - 1:
+                        if (light_full_other_onset - offtrack_other_trial['time'].iloc[t + 1]) > 0 and event == 'swing':
+                            light_onset_phase[t] = final_tracks_phase_paw[light_full_other_onset_idx] + 1
+                    light_full_other_offset = light_offset_arr[full_other_idx[0]]
+                    light_full_other_offset_idx = np.argmin(
+                        np.abs(light_full_other_offset - timestamps_session[trial_idx]))
+                    if (light_full_other_offset - offtrack_trial['time'].iloc[t]) > 0 and event == 'stance':
+                        light_onset_phase[t] = final_tracks_phase_paw[light_full_other_offset_idx]
+                    if t < len(offtrack_trial['time']) - 1:
+                        if (light_full_other_offset - offtrack_other_trial['time'].iloc[
+                            t + 1]) > 0 and event == 'swing':
+                            light_onset_phase[t] = final_tracks_phase_paw[light_full_other_offset_idx] + 1
+            light_onset_phase_list.extend(light_onset_phase)
+            light_offset_phase_list.extend(light_offset_phase)
+        light_phase_dict = {'onset': light_onset_phase_list, 'offset': light_offset_phase_list}
+        if event == 'stance':
+            offtracks_phase = offtracks_st.copy()
+        if event == 'swing':
+            offtracks_phase = offtracks_sw.copy()
+        offtracks_phase = offtracks_phase.assign(**light_phase_dict)
+        return offtracks_phase
 
     def param_continuous_sym(self, param_trials, st_strides_trials, trials, p1, p2, sym, remove_nan):
         """Compute a parameter across all trials and correspondent time, if wanted compute symmetry using another paw
@@ -247,11 +498,12 @@ class loco_class:
         wrist_angles = np.arctan(elxz[:,0]/elxz[:,1])+np.arctan(toexz[:,0]/toexz[:,1])
         return body_axis_xy, body_axis_xz, tail_axis_xy, tail_axis_xz, wrist_angles
     
-    def get_sw_st_matrices(self,final_tracks,exclusion):
+    def get_sw_st_matrices(self,final_tracks,exclusion,wl=11,return_all=False):
         """Computes swing and stance points of a trial from x axis of the bottom view tracking.
         It excludes strides based on a distribution of some gait parameters
         Input: final_tracks (4x5xframes)
                exclusion - boolean to exclude strides 
+               return_all - boolean to return all strides without exclusion, to be used not for gait param computation but more for stride plotting
         Output: st_strides_mat (stridesx2x5)
                 sw_pts_mat (stridesx1x5)
         columns: st/sw in ms; x(st/sw); y(st/sw); z(st/sw); st idx/sw idx
@@ -267,7 +519,7 @@ class loco_class:
         swing_mat = []
         stance_mat = []
         for p in range(4):
-            data_filt = savgol_filter(X[p,:], window_length = 11, polyorder = 1)
+            data_filt = savgol_filter(X[p,:], window_length = wl, polyorder = 1)
             peaks = find_peaks(data_filt)
             throughs = find_peaks(-data_filt)
             stance = peaks[0]
@@ -294,7 +546,10 @@ class loco_class:
                 sw_pts[s,:,3] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),3][0]
                 sw_pts[s,:,4] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),4][0]
             st_strides_mat.append(st_strides)
-            sw_pts_mat.append(sw_pts)            
+            sw_pts_mat.append(sw_pts)   
+        import copy
+        st_strides_mat_before_exclusion = copy.deepcopy(st_strides_mat)
+        sw_pts_mat_before_exclusion = copy.deepcopy(sw_pts_mat)
         if exclusion:
             #compute some gait parameters
             stride_duration_mat = []
@@ -339,7 +594,167 @@ class loco_class:
         else:
             st_strides_mat_new = st_strides_mat
             sw_pts_mat_new = sw_pts_mat
-        return st_strides_mat_new, sw_pts_mat_new
+        #check if there are enough strides detected
+        st_strides_mat_clean = []
+        sw_pts_mat_clean = []
+        for p in range(4):
+            if np.shape(st_strides_mat_new[p])[0] < 20:
+                st_strides_mat_nan = np.zeros((1, 2, 5))
+                st_strides_mat_nan[:] = np.nan
+                st_strides_mat_clean.append(st_strides_mat_nan)
+            else:
+                st_strides_mat_clean.append(st_strides_mat_new[p])
+            if np.shape(sw_pts_mat_new[p])[0] < 20: 
+                sw_pts_mat_nan = np.zeros((1, 1, 5))
+                sw_pts_mat_nan[:] = np.nan
+                sw_pts_mat_clean.append(sw_pts_mat_nan)
+            else:
+                sw_pts_mat_clean.append(sw_pts_mat_new[p])
+            print('Paw %d: %d stance and %d swing after exclusion' %(p+1,np.shape(st_strides_mat_clean[p])[0],np.shape(sw_pts_mat_clean[p])[0]))
+        if return_all:
+            return st_strides_mat_clean, sw_pts_mat_clean, st_strides_mat_before_exclusion, sw_pts_mat_before_exclusion
+        else:
+            return st_strides_mat_clean, sw_pts_mat_clean
+        st_strides_mat_clean = []
+        sw_pts_mat_clean = []
+        for p in range(4):
+            if np.shape(st_strides_mat_new[p])[0] < 20:
+                st_strides_mat_nan = np.zeros((1, 2, 5))
+                st_strides_mat_nan[:] = np.nan
+                st_strides_mat_clean.append(st_strides_mat_nan)
+            else:
+                st_strides_mat_clean.append(st_strides_mat_new[p])
+            if np.shape(sw_pts_mat_new[p])[0] < 20: 
+                sw_pts_mat_nan = np.zeros((1, 1, 5))
+                sw_pts_mat_nan[:] = np.nan
+                sw_pts_mat_clean.append(sw_pts_mat_nan)
+            else:
+                sw_pts_mat_clean.append(sw_pts_mat_new[p])
+        if return_all:
+            return st_strides_mat_clean, sw_pts_mat_clean, st_strides_mat, sw_pts_mat
+        else:
+            return st_strides_mat_clean, sw_pts_mat_clean
+
+    def get_sw_st_matrices_cubic_spline(self,final_tracks,exclusion):
+            """Computes swing and stance points of a trial from x axis of the bottom view tracking.
+            It excludes strides based on a distribution of some gait parameters
+            Input: final_tracks (4x5xframes)
+                exclusion - boolean to exclude strides 
+            Output: st_strides_mat (stridesx2x5)
+                    sw_pts_mat (stridesx1x5)
+            columns: st/sw in ms; x(st/sw); y(st/sw); z(st/sw); st idx/sw idx
+            2 middle columns for beginning and end of stride"""
+            #convert to mm and interpolate NaNs
+            X = final_tracks[0,:,:]*self.pixel_to_mm
+            Y = final_tracks[1,:,:]*self.pixel_to_mm
+            Z = final_tracks[3,:,:]*self.pixel_to_mm
+            X_interp = self.inpaint_nans_cubic_spline(X)
+            Y_interp = self.inpaint_nans_cubic_spline(Y)
+            Z_interp = self.inpaint_nans_cubic_spline(Z)
+            #peak detection
+            swing_mat = []
+            stance_mat = []
+            for p in range(4):
+                data_filt = savgol_filter(X_interp[p,:], window_length = 11, polyorder = 1)
+                peaks = find_peaks(data_filt)
+                throughs = find_peaks(-data_filt)
+                stance = peaks[0]
+                swing = throughs[0]
+                swing_mat.append(np.column_stack((swing/self.sr*1000,X_interp[p,swing],Y_interp[p,swing],Z_interp[p,swing],swing)))
+                stance_mat.append(np.column_stack((stance/self.sr*1000,X_interp[p,stance],Y_interp[p,stance],Z_interp[p,stance],stance)))
+            #stride sorting
+            st_strides_mat = []
+            sw_pts_mat = []
+            for p in range(4):
+                st_strides = np.zeros((len(stance_mat[p]),2,5))
+                sw_pts = np.zeros((len(stance_mat[p]),1,5))
+                for s in range(np.shape(stance_mat[p])[0]-1):
+                    #define stride from st to st onset
+                    st_strides[s,:,0] = [stance_mat[p][s,0],stance_mat[p][s+1,0]-1]
+                    st_strides[s,:,1] = [stance_mat[p][s,1],stance_mat[p][s+1,1]-1]
+                    st_strides[s,:,2] = [stance_mat[p][s,2],stance_mat[p][s+1,2]-1]
+                    st_strides[s,:,3] = [stance_mat[p][s,3],stance_mat[p][s+1,3]-1]
+                    st_strides[s,:,4] = [stance_mat[p][s,4],stance_mat[p][s+1,4]-1]
+                    #find swing point between those st onsets
+                    sw_pts[s,:,0] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),0][0]
+                    sw_pts[s,:,1] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),1][0]
+                    sw_pts[s,:,2] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),2][0]
+                    sw_pts[s,:,3] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),3][0]
+                    sw_pts[s,:,4] = swing_mat[p][(swing_mat[p][:,4]>=stance_mat[p][s,4]) &  (swing_mat[p][:,4]<=stance_mat[p][s+1,4]),4][0]
+                st_strides_mat.append(st_strides)
+                sw_pts_mat.append(sw_pts)            
+            if exclusion:
+                #compute some gait parameters
+                stride_duration_mat = []
+                swing_duration_mat = []
+                stance_duration_mat = []
+                swing_length_mat = []
+                swing_velocity_mat = []
+                for p in range(4):
+                    stride_duration = st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0]
+                    swing_duration = st_strides_mat[p][:,1,0]-sw_pts_mat[p][:,0,0]
+                    stance_duration = sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0]
+                    swing_length = X_interp[p,st_strides_mat[p][:,1,4].astype(int)]-X_interp[p,sw_pts_mat[p][:,0,4].astype(int)]
+                    swing_velocity = swing_length/swing_duration
+                    stride_duration_mat.append(stride_duration)
+                    swing_duration_mat.append(swing_duration)
+                    stance_duration_mat.append(stance_duration)
+                    swing_length_mat.append(swing_length)
+                    swing_velocity_mat.append(swing_velocity)
+                #exclude strides
+                exclusion_paws = []
+                for p in range(4):               
+                    exclusion_mat = [np.where(stride_duration_mat[p]>600)[0],np.where(stride_duration_mat[p]<75)[0],np.where(swing_duration_mat[p]>275)[0],np.where(swing_duration_mat[p]<25)[0],np.where(swing_length_mat[p]>90)[0],np.where(swing_length_mat[p]<10)[0],np.where(stance_duration_mat[p]>550)[0],np.where(stance_duration_mat[p]<30)[0],np.where(swing_velocity_mat[p]<0)[0]]
+                    exclusion_paws.append(np.unique(list(chain.from_iterable(exclusion_mat))))
+                #make excluded strides nan
+                st_strides_mat_new = []
+                sw_pts_mat_new = []
+                for p in range(4):
+                    if len(exclusion_paws[p])>0:
+                        st_strides_mat[p][exclusion_paws[p],:,:] = np.nan
+                        st_strides_excl = st_strides_mat[p]
+                        #remove nans
+                        st_strides_excl = st_strides_excl[~np.isnan(st_strides_excl[:,0,0]),:,:]
+                        st_strides_mat_new.append(st_strides_excl)
+                        sw_pts_mat[p][exclusion_paws[p],:,:] = np.nan
+                        sw_pts_excl = sw_pts_mat[p]
+                        #remove nans
+                        sw_pts_excl = sw_pts_excl[~np.isnan(sw_pts_excl[:,0,0]),:,:]
+                        sw_pts_mat_new.append(sw_pts_excl)
+                    else:
+                        st_strides_mat_new.append(st_strides_mat[p])
+                        sw_pts_mat_new.append(sw_pts_mat[p])
+            else:
+                st_strides_mat_new = st_strides_mat
+                sw_pts_mat_new = sw_pts_mat
+            #check if there are enough strides detected
+            st_strides_mat_clean = []
+            sw_pts_mat_clean = []
+            for p in range(4):
+                if np.shape(st_strides_mat_new[p])[0] < 20:
+                    st_strides_mat_nan = np.zeros((1, 2, 5))
+                    st_strides_mat_nan[:] = np.nan
+                    st_strides_mat_clean.append(st_strides_mat_nan)
+                else:
+                    st_strides_mat_clean.append(st_strides_mat_new[p])
+                if np.shape(sw_pts_mat_new[p])[0] < 20: 
+                    sw_pts_mat_nan = np.zeros((1, 1, 5))
+                    sw_pts_mat_nan[:] = np.nan
+                    sw_pts_mat_clean.append(sw_pts_mat_nan)
+                else:
+                    sw_pts_mat_clean.append(sw_pts_mat_new[p])
+            return st_strides_mat_clean, sw_pts_mat_clean
+
+
+    def final_tracks_perctrial(self, final_tracks, bodycenter, perc_division):
+        max_samples = np.shape(final_tracks)[2]
+        sample_division = np.int64(max_samples * (perc_division / 100))
+        final_tracks_perctrial = []
+        bodycenter_perctrial = []
+        for i in range(np.int64(100 / perc_division)):
+            final_tracks_perctrial.append(final_tracks[:, :, sample_division * i:sample_division * (i + 1)])
+            bodycenter_perctrial.append(bodycenter[:, sample_division * i:sample_division * (i + 1)])
+        return final_tracks_perctrial, bodycenter_perctrial
 
     @staticmethod
     def final_tracks_phase(final_tracks_trials, trials, st_strides_trials, sw_strides_trials, phase_type):
@@ -368,16 +783,36 @@ class loco_class:
                         if phase_type == 'st-sw-st':
                             nr_st = len(final_tracks_trials[count_t][0, p, st_on:sw_on])
                             nr_sw = len(final_tracks_trials[count_t][0, p, sw_on:st_off])
-                            excursion_phase[st_on - 1:sw_on] = np.linspace(0, 0.5, nr_st + 1)
-                            excursion_phase[sw_on - 1:st_off] = np.linspace(0.5, 1, nr_sw + 1)
-                            excursion_phase[st_off] = 0  # put it there -1
+                            excursion_phase[st_on:sw_on+1] = np.linspace(0, 0.5, nr_st + 1)
+                            #last point needs to be 1 so that 1 and 0 and indistinguishable between strides
+                            excursion_phase[sw_on+1:st_off+1] = np.linspace(0.5, 1, nr_sw + 1)[1:]
                         if phase_type == 'st-st':
                             nr_st = len(final_tracks_trials[count_t][0, p, st_on:st_off])
-                            excursion_phase[st_on - 1:st_off] = np.linspace(0, 1, nr_st + 1)
-                            excursion_phase[st_off] = 0  # put it there -1
+                            excursion_phase[st_on:st_off+1] = np.linspace(0, 1, nr_st + 1)
                     final_tracks_phase[a, p, :] = excursion_phase
             final_tracks_trials_phase.append(final_tracks_phase)
         return final_tracks_trials_phase
+
+    @staticmethod
+    def check_usable_tracks(final_tracks, st_strides_mat):
+        paw_colors = ['#e52c27', '#ad4397', '#3854a4', '#6fccdf']
+        final_tracks_good = np.zeros(np.shape(final_tracks[0, :4, :]))
+        final_tracks_good[:] = np.nan
+        for p in range(4):
+            for i in range(np.shape(st_strides_mat[p])[0]):
+                index_start = np.int64(st_strides_mat[p][i, 0, -1])
+                index_end = np.int64(st_strides_mat[p][i, -1, -1])
+                final_tracks_good[p, index_start:index_end] = final_tracks[0, p, index_start:index_end]
+
+        fig, ax = plt.subplots(figsize=(10, 5), tight_layout=True)
+        for p in range(4):
+            ax.plot(np.arange(len(final_tracks[0, p, :])), final_tracks[0, p, :], color=paw_colors[p], linewidth=2)
+            ax.plot(np.arange(len(final_tracks_good[p, :])), final_tracks_good[p, :], color='black', linewidth=2)
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+            plt.xticks(fontsize=14)
+            plt.yticks(fontsize=14)
+            ax.set_title('In black is the parts used for gait parameters - zoom-in for more info')
 
     def get_sw_st_matrices_JR(self,final_tracks,dict_swst,exclusion):
         """Computes swing and stance points of a trial from x axis of the bottom view tracking.
@@ -553,6 +988,20 @@ class loco_class:
         #compute gait parameters
         p_sl = np.array([2, 3, 0, 1]) #paw order for contralateral paw
         param_mat = []
+        # helper to safely index arrays with potential NaN frame indices
+        def safe_index(arr, idx_array):
+            """Return values arr[idx_array] but keep NaNs where idx_array has NaN.
+            idx_array: 1D array of frame indices (may contain NaN)
+            arr: 1D array
+            Output: array same length as idx_array with NaNs preserved."""
+            out = np.zeros(len(idx_array))
+            out[:] = np.nan
+            if len(idx_array) == 0:
+                return out
+            valid_mask = np.isfinite(idx_array)
+            if np.any(valid_mask):
+                out[valid_mask] = arr[idx_array[valid_mask].astype(int)]
+            return out
         for p in range(4):
             if param == 'stride_duration':
                 param_mat.append(st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0])
@@ -561,11 +1010,17 @@ class loco_class:
             if param == 'stance_duration':
                 param_mat.append(sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0])
             if param == 'swing_length':
-                param_mat.append(X_interp[p,st_strides_mat[p][:,1,4].astype(int)]-X_interp[p,sw_pts_mat[p][:,0,4].astype(int)])
+                end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
+                sw_vals = safe_index(X_interp[p,:], sw_pts_mat[p][:,0,4])
+                param_mat.append(end_vals - sw_vals)
             if param == 'swing_velocity':
-                param_mat.append((X_interp[p,st_strides_mat[p][:,1,4].astype(int)]-X_interp[p,sw_pts_mat[p][:,0,4].astype(int)])/(st_strides_mat[p][:,1,0]-sw_pts_mat[p][:,0,0]))
+                end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
+                sw_vals = safe_index(X_interp[p,:], sw_pts_mat[p][:,0,4])
+                param_mat.append((end_vals - sw_vals)/(st_strides_mat[p][:,1,0]-sw_pts_mat[p][:,0,0]))
             if param == 'swinglength_rel':
-                param_mat.append(paws_rel[p][st_strides_mat[p][:,1,4].astype(int)]-paws_rel[p][st_strides_mat[p][:,0,4].astype(int)])
+                rel_end = safe_index(paws_rel[p], st_strides_mat[p][:,1,4])
+                rel_start = safe_index(paws_rel[p], st_strides_mat[p][:,0,4])
+                param_mat.append(rel_end - rel_start)
             if param == 'stance_speed':
                 param_mat.append((sw_pts_mat[p][:,0,1]-st_strides_mat[p][:,0,1])/
                                   (sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0]))
@@ -574,34 +1029,53 @@ class loco_class:
             if param == 'body_center_x_stride':
                 bodycenter_stride = np.zeros((np.shape(st_strides_mat[p])[0]))
                 for s in range(np.shape(st_strides_mat[p])[0]):
-                    bodycenter_stride[s] = np.nanmean(bodycenter_x[st_strides_mat[p][s,0,4].astype(int):st_strides_mat[p][s,1,4].astype(int)])
+                    beg = st_strides_mat[p][s,0,4]
+                    end = st_strides_mat[p][s,1,4]
+                    if np.isfinite(beg) and np.isfinite(end):
+                        bodycenter_stride[s] = np.nanmean(bodycenter_x[int(beg):int(end)])
+                    else:
+                        bodycenter_stride[s] = np.nan
                 param_mat.append(bodycenter_stride) 
             if param == 'body_speed_x':
                 bodyspeed = np.zeros((np.shape(st_strides_mat[p])[0]))
                 for s in range(np.shape(st_strides_mat[p])[0]):
-                    space_beg = bodycenter_x[st_strides_mat[p][s,0,4].astype(int)]*self.pixel_to_mm
-                    space_end = bodycenter_x[st_strides_mat[p][s,1,4].astype(int)]*self.pixel_to_mm
-                    bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    beg = st_strides_mat[p][s,0,4]
+                    end = st_strides_mat[p][s,1,4]
+                    if np.isfinite(beg) and np.isfinite(end):
+                        space_beg = bodycenter_x[int(beg)]*self.pixel_to_mm
+                        space_end = bodycenter_x[int(end)]*self.pixel_to_mm
+                        bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    else:
+                        bodyspeed[s] = np.nan
                 param_mat.append(bodyspeed)
             if param == 'duty_factor':
                 param_mat.append((sw_pts_mat[p][:,0,0]-st_strides_mat[p][:,0,0])/(st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0])*100)  
             if param == 'cadence':
                 param_mat.append(1/(st_strides_mat[p][:,1,0]-st_strides_mat[p][:,0,0]))    
             if param == 'coo':
-                param_mat.append(np.nanmean(np.column_stack((paws_rel[p][st_strides_mat[p][:,0,4].astype(int)],paws_rel[p][sw_pts_mat[p][:,0,4].astype(int)])),axis=1))   
+                stance_vals = safe_index(paws_rel[p], st_strides_mat[p][:,0,4])
+                swing_vals = safe_index(paws_rel[p], sw_pts_mat[p][:,0,4])
+                param_mat.append(np.nanmean(np.column_stack((stance_vals, swing_vals)),axis=1))   
             if param == 'coo_stance':
-                param_mat.append(paws_rel[p][st_strides_mat[p][:,0,4].astype(int)])    
+                param_mat.append(safe_index(paws_rel[p], st_strides_mat[p][:,0,4]))    
             if param == 'coo_swing':
-                param_mat.append(paws_rel[p][sw_pts_mat[p][:,0,4].astype(int)])      
+                param_mat.append(safe_index(paws_rel[p], sw_pts_mat[p][:,0,4]))      
             if param == 'body_speed_x_cv':
                 bodyspeed = np.zeros((np.shape(st_strides_mat[p])[0]))
                 for s in range(np.shape(st_strides_mat[p])[0]):
-                    space_beg = bodycenter_x[st_strides_mat[p][s,0,4].astype(int)]*self.pixel_to_mm
-                    space_end = bodycenter_x[st_strides_mat[p][s,1,4].astype(int)]*self.pixel_to_mm
-                    bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    beg = st_strides_mat[p][s,0,4]
+                    end = st_strides_mat[p][s,1,4]
+                    if np.isfinite(beg) and np.isfinite(end):
+                        space_beg = bodycenter_x[int(beg)]*self.pixel_to_mm
+                        space_end = bodycenter_x[int(end)]*self.pixel_to_mm
+                        bodyspeed[s] = (space_end-space_beg)/(st_strides_mat[p][s,1,0]-st_strides_mat[p][s,0,0])
+                    else:
+                        bodyspeed[s] = np.nan
                 param_mat.append(np.nanstd(bodyspeed)/np.nanmean(bodyspeed))
             if param == 'step_length':
-                param_mat.append(X_interp[p,st_strides_mat[p][:,0,4].astype(int)]-X_interp[p_sl[p],st_strides_mat[p][:,0,4].astype(int)])   
+                stance_vals_p = safe_index(X_interp[p,:], st_strides_mat[p][:,0,4])
+                stance_vals_contra = safe_index(X_interp[p_sl[p],:], st_strides_mat[p][:,0,4])
+                param_mat.append(stance_vals_p - stance_vals_contra)   
             if param == 'double_support':
                 ds = np.zeros((np.shape(st_strides_mat[p])[0]))
                 ds[:] = np.nan
@@ -614,19 +1088,150 @@ class loco_class:
                         ds[s] = (pt_next[0]-st_strides_mat[p][s,0,4])/(st_strides_mat[p][s,1,4]-st_strides_mat[p][s,0,4])*100
                 param_mat.append(ds)
             if param == 'phase_st':
+                from scipy.stats import circmean
                 #to do average do circular mean
                 phase_st_paw = []
                 for paw in range(4):  
                     phase_st_radians = np.zeros((np.shape(st_strides_mat[p])[0]))
                     phase_st_radians[:] = np.nan
+                    phase_st_radians_corrected = np.zeros((np.shape(st_strides_mat[p])[0]))
+                    phase_st_radians_corrected[:] = np.nan
                     for s in range(np.shape(st_strides_mat[p])[0]):      
                         val = st_strides_mat[paw][(st_strides_mat[paw][:,0,4]>=st_strides_mat[p][s,0,4])&(st_strides_mat[paw][:,0,4]<=st_strides_mat[p][s,1,4]),0,4]
                         if len(val)>0:
                             phase_st = (val[0]-st_strides_mat[p][s,0,4])/(st_strides_mat[p][s,1,4]-st_strides_mat[p][s,0,4])
-                            phase_st_radians[s] = phase_st*2*pi
-                    phase_st_paw.append(phase_st_radians)
+                            value_radians = phase_st*2*pi
+                            phase_st_radians[s] = value_radians
+                            # Apply manual correction
+                            if value_radians > 2*pi:
+                                phase_st_radians_corrected[s] = value_radians-(2*pi)
+                            else:
+                                phase_st_radians_corrected[s] = value_radians
+                    '''
+                    plt.figure()
+                    plt.plot(phase_st_radians_corrected, 'b', label='Corrected')
+                    plt.title('Phase of paw '+str(paw)+' wrt paw '+str(p))
+                    plt.axhline(circmean(phase_st_radians_corrected, nan_policy='omit'), color='b', linestyle='dotted')
+                    # Alternatively, apply unwrap, accounting for nan values --> introduces drifts in the values, but circmean is always the same
+                    mask = ~np.isnan(phase_st_radians)  # Find non-NaN values
+                    unwrapped = np.full_like(phase_st_radians, np.nan)  # Create an output array filled with NaN
+                    unwrapped[mask] = np.unwrap(phase_st_radians[mask], discont=np.pi)  # Unwrap only valid values
+                    phase_st_radians_unwrapped = unwrapped
+                    plt.plot(phase_st_radians_unwrapped, 'r', label='Unwrapped')
+                    plt.axhline(circmean(phase_st_radians_unwrapped, nan_policy='omit'), color='r', linestyle='dotted')
+                    plt.legend()
+                    plt.show() 
+'''
+                    phase_st_paw.append(phase_st_radians_corrected)
+                     
                 param_mat.append(phase_st_paw)
+                
         return param_mat
+
+    def prepare_and_compute_gait_param(self, animal_list, Ntrials, param_sym_name, session_list, bs_bool, stim_start):   #bodycenter,final_tracks,paws_rel,st_strides_mat,sw_pts_mat,param):
+        """Get information on experiment and animals, prepare variables and compute gait parameters for all four paws
+        Input:  
+            animal_list (list): list of animals in the current session
+            Ntrials (int): number of trials
+            param_sym_name (list): list of names of parameters to compute
+            session_list (list)
+            bs_bool (bool): whether to subtract baseline (1) or not (0)
+            stim_start (int): trial where stimulation starts - used to compute baseline values (during tied unstimulated trials)
+            final_tracks (4x5xframes)
+            paws_rel (1xframes per paw)
+            st_strides_mat (stridesx2x5 per paw)
+            sw_pts_mat (stridesx1x5 per paw)
+            param - variable name (check outputs)
+        Outputs: 
+            param_sym_bs (np array - num_param x num_animals x num_trials): gait parameters for all animals and trials in the current session; baseline substracted if selected
+            stance_speed (np array - 4 x num_animals x num_trials): stance speed for each of the 4 paws, fo all animals and trials in the current session
+            st_strides_trials: 
+        """
+        param_sym = np.zeros((len(param_sym_name), len(animal_list), Ntrials))
+        param_sym[:] = np.NaN
+        stance_speed = np.zeros((4, len(animal_list), Ntrials))
+        stance_speed[:] = np.NaN
+        st_strides_trials = []
+        for count_animal, animal in enumerate(animal_list):
+            session = int(session_list[count_animal])
+            #TODO: check if this filelist needs to be emptied first!
+            filelist = self.get_track_files(animal, session)             # loco_object is locos[path_index]
+            for f in filelist:
+                count_trial = int(f.split('DLC')[0].split('_')[-1])-1      # Get trial number from file name, to spot any missing trial; parameters for remaining ones will stay to NaN
+                [final_tracks, tracks_tail, joints_wrist, joints_elbow, ear, bodycenter] = self.read_h5(f, 0.9, 0)
+                [st_strides_mat, sw_pts_mat] = self.get_sw_st_matrices(final_tracks, 1)
+                st_strides_trials.append(st_strides_mat)
+                paws_rel = self.get_paws_rel(final_tracks, 'X')
+                for count_p, param in enumerate(param_sym_name):
+                    param_mat = self.compute_gait_param(bodycenter, final_tracks, paws_rel, st_strides_mat, sw_pts_mat, param)
+                    if param == 'stance_speed':
+                        for p in range(4):
+                            stance_speed[p, count_animal, count_trial] = np.nanmean(param_mat[p])
+                    elif param == 'step_length':
+                        param_sym[count_p, count_animal, count_trial] = np.nanmean(param_mat[0]) - np.nanmean(param_mat[2])
+                    else:
+                        param_sym[count_p, count_animal, count_trial] = np.nanmean(param_mat[0])-np.nanmean(param_mat[2])
+
+        # BASELINE SUBTRACTION OF GAIT PARAMETERS
+        if bs_bool:
+            param_sym_bs = np.zeros(np.shape(param_sym))
+            for p in range(np.shape(param_sym)[0]-1):
+                for a in range(np.shape(param_sym)[1]):
+                    if stim_start == 9:
+                        bs_mean = np.nanmean(param_sym[p, a, :stim_start-1])
+                    if stim_start == 5:
+                        bs_mean = np.nanmean(param_sym[p, a, stim_start-1:8])
+                    param_sym_bs[p, a, :] = param_sym[p, a, :] - bs_mean
+        else:
+            param_sym_bs = param_sym
+        return param_sym_bs, stance_speed, st_strides_trials
+
+    def compute_learning_params(self, learning_params_dict, param_sym_bs, intervals=None):
+        """Compute learning parameters with stats"""
+        if not learning_params_dict:
+            learning_params_dict['initial error'] = []
+            learning_params_dict['adaptation'] = []
+            learning_params_dict['after-effect'] = []
+            learning_params_dict['% change adaptation'] = []
+            learning_params_dict['% change after-effect'] = []
+
+        if 'split' not in intervals.keys() or intervals['split'][1] == 0:   # If there is no split (not in the dictionary or split_duration set to 0), take stim info
+            split_start = intervals['stim'][0]
+            split_duration = intervals['stim'][1]
+        else:
+            split_start = intervals['split'][0]
+            split_duration = intervals['split'][1]
+
+        initial_error = param_sym_bs[:, split_start-1]             # First trial of split
+        adaptation = np.nanmean(param_sym_bs[:,split_start+split_duration-3:split_start+split_duration-1], axis=1)-param_sym_bs[:,split_start-1]    # Last 2 trials of split - first trial of split
+        after_effect = np.nanmean(param_sym_bs[:,split_start+split_duration-1:split_start+split_duration+1], axis=1)            # First 2 trials of after effect
+        change_adaptation=100*np.divide(np.array(adaptation),np.where(np.abs(initial_error) < 0.1, np.nan, initial_error))
+        change_after_effect=100*np.divide(np.array(after_effect),np.where(np.abs(initial_error) < 0.1, np.nan, np.abs(initial_error)))
+
+        learning_params_dict['initial error'].append(initial_error)
+        learning_params_dict['adaptation'].append(adaptation)
+        learning_params_dict['after-effect'].append(after_effect)
+        learning_params_dict['% change adaptation'].append(change_adaptation)
+        learning_params_dict['% change after-effect'].append(change_after_effect)
+
+        return learning_params_dict
+
+    def compute_stat_learning_param(self, learning_params_dict, stat_learning_params_dict, current_param_sym_name, thr=0.05):
+        import scipy.stats as st
+        # Compute statistics
+        if not stat_learning_params_dict:
+            stat_learning_params_dict['initial error'] = []
+            stat_learning_params_dict['adaptation'] = []
+            stat_learning_params_dict['after-effect'] = []
+            stat_learning_params_dict['% change adaptation'] = []
+            stat_learning_params_dict['% change after-effect'] = []
+
+        for param_name in learning_params_dict.keys():
+            for exp in range(1,len(learning_params_dict['initial error'])):  
+                print(learning_params_dict[param_name][0], learning_params_dict[param_name][exp])
+                print(['param ', current_param_sym_name, ' ', param_name, ' stats: ', st.wilcoxon(learning_params_dict[param_name][0], learning_params_dict[param_name][exp])])
+                stat_learning_params_dict[param_name].append(st.wilcoxon(learning_params_dict[param_name][0], learning_params_dict[param_name][exp], nan_policy='omit').pvalue<thr)
+        return stat_learning_params_dict
 
     def animals_within_session(self):
         """See which animals and sessions are in the folder with tracks"""
@@ -636,7 +1241,10 @@ class loco_class:
         for f in h5files:
             path_split = f.split(delim)
             filename_split = path_split[-1].split('_')
-            animal_session.append([filename_split[0],filename_split[6]])
+            if 'HGM' in self.path:
+               animal_session.append([filename_split[0],filename_split[7]]) 
+            else:
+                animal_session.append([filename_split[0],filename_split[6]])
         #check which sessions exist
         unique_list = []       
         for x in animal_session: 
@@ -656,10 +1264,16 @@ class loco_class:
             path_split = f.split(delim)
             filename_split = path_split[-1].split('_')
             animal_name = filename_split[0]
-            session_nr = int(filename_split[6])
+            if 'HGM' in self.path:
+                session_nr = int(filename_split[7])
+            else:
+                session_nr = int(filename_split[6])
             if animal_name == animal and session_nr == session:
                 filelist.append(path_split[-1])
-                trial_order.append(int(filename_split[7][:-3]))
+                if 'HGM' in self.path:
+                    trial_order.append(int(filename_split[8][:-3]))
+                else:
+                    trial_order.append(int(filename_split[7][:-3]))
         trial_ordered = np.sort(np.array(trial_order) ) #reorder trials
         files_ordered = [] #order tif filenames by file order
         for f in range(len(filelist)):

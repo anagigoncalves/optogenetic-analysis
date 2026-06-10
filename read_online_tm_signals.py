@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb  7 16:59:15 2023
-@author: Ana
-"""
 import os
+import numpy as np
+
 paw_otrack = 'FR'
-path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments\\singletrial\\20230607 tied swing stim\\'         #20230607 tied swing stim   20230606 tied stance stim
+path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim\\'
+path = 'C:\\Users\\Utilizador\Carey Lab Dropbox\\Alice Geminiani\\LocoCF-internal\\Tests setup\\26052023 HR test\\25percent\\'
 main_dir = path.split('\\')[:-2]
 session = 1
 plot_data = 0
@@ -15,14 +13,24 @@ import locomotion_class
 loco = locomotion_class.loco_class(path)
 if not os.path.exists(os.path.join(path, 'processed files')):
     os.mkdir(os.path.join(path, 'processed files'))
-animals = ['MC17319']       # 'MC17666', 
+animals = ['VIV44766', 'VIV44771', 'VIV45372', 'VIV45373']
+corr_latency = [0, 0, 0, 0]
 
-for animal in animals:
+animal_session_list = loco.animals_within_session()
+animal_list = []
+for a in range(len(animal_session_list)):
+    animal_list.append(animal_session_list[a][0])
+session_list = []
+for a in range(len(animal_session_list)):
+    session_list.append(animal_session_list[a][1])
+
+for count_a, animal in enumerate(animals):
+    print('Processing ' + animal)
     trials = otrack_class.get_trials(animal)
     # READ CAMERA TIMESTAMPS AND FRAME COUNTER
     [camera_timestamps_session, camera_frames_kept, camera_frame_counter_session] = otrack_class.get_session_metadata(animal, plot_data)
-
     # READ SYNCHRONIZER SIGNALS
+    # If MC16851 need to uncomment/comment some lines inside function
     [timestamps_session, frame_counter_session, trial_signal_session, sync_signal_session, laser_signal_session, laser_trial_signal_session] = otrack_class.get_synchronizer_data(camera_frames_kept, animal, plot_data)
 
     # READ ONLINE DLC TRACKS
@@ -30,16 +38,19 @@ for animal in animals:
     [otracks_st, otracks_sw] = otrack_class.get_otrack_event_data(timestamps_session, animal)
 
     # READ OFFLINE DLC TRACKS
-    [offtracks_st, offtracks_sw] = otrack_class.get_offtrack_event_data(paw_otrack, loco, animal, session, timestamps_session)
+    [offtracks_st, offtracks_sw] = otrack_class.get_offtrack_event_data(paw_otrack, loco, animal, np.int64(session_list[count_a]), timestamps_session, save_csv=True)
 
-    # READ OFFLINE PAW EXCURSIONS
-    final_tracks_trials = otrack_class.get_offtrack_paws(loco, animal, session)
+    ## READ OFFLINE PAW EXCURSIONS
+    [final_tracks_trials, st_strides_trials, sw_strides_trials] = otrack_class.get_offtrack_paws(loco, animal, session)
 
     # PROCESS SYNCHRONIZER LASER SIGNALS
-    laser_on = otrack_class.get_laser_on(animal, laser_signal_session, timestamps_session)
+    #if 'ChR2'
+    #laser_on = otrack_class.get_laser_on_some_trials(animal, laser_trial_signal_session, timestamps_session, np.arange(9, 19))
+    #if JAWS
+    #laser_on = otrack_class.get_laser_on(animal, laser_signal_session, timestamps_session)
 
-    # LATENCY OF LIGHT IN RELATION TO OTRACK
-    # [latency_light_st, latency_light_sw, st_led_on, sw_led_on] = otrack_class.get_led_information_trials(animal, timestamps_session, otracks_st, otracks_sw)
+    # # GET LED INFORMATION
+    # [st_led_on, sw_led_on] = otrack_class.get_led_information_trials(animal, timestamps_session, otracks_st, otracks_sw, corr_latency[count_a])
 
     # # OVERLAY WHEN LED SWING WAS ON
     # for t in trials:
