@@ -135,3 +135,132 @@ def set_kinematic_plot_style(ax, variable_name, paw_name, center = 'sw', force_c
         ax.set_ylim([0, 20])
     else:
         ax.set_ylim([-7, 7])
+
+
+def plot_stacked_stride_positions(
+    ax,
+    padded_positions,
+    stride_laser_onsets,
+    stride_laser_offsets,
+    min_time,
+    max_time,
+    time_range,
+    axis,
+    paw_name,
+    paw_color,
+    laser_color,
+    center,
+    title=None,
+    show_colorbar=True,
+    show_labels=True,
+    vmin=0,
+    vmax=40,
+    show_xlabel=None,
+    show_ylabel=None,
+    show_legend=None,
+    legend_loc='upper right',
+    legend_bbox=(1.02, 1.02),
+):
+    """
+    Plot stacked stride positions as a 2D grayscale image with laser intervals overlaid.
+    
+    Parameters:
+    -----------
+    ax : matplotlib.axes.Axes
+        The axes to plot on
+    padded_positions : np.ndarray
+        2D array of stride positions (strides x time samples)
+    stride_laser_onsets : list
+        List of laser onset times for each stride
+    stride_laser_offsets : list
+        List of laser offset times for each stride
+    min_time, max_time : float
+        Time range for the extent of the image
+    time_range : list
+        [min, max] time range for x-axis limits
+    axis : str
+        Axis label (e.g., 'x', 'y', 'z')
+    paw_name : str
+        Name of the paw
+    paw_color : str
+        Color for paw-related elements
+    laser_color : str
+        Color for laser interval shading
+    center : str
+        'st' or 'sw' for stance or swing centering
+    title : str, optional
+        Plot title
+    show_colorbar : bool
+        Whether to show the colorbar
+    show_labels : bool
+        Backward compatible flag for enabling labels/legend together
+    vmin, vmax : float
+        Color scale limits
+    show_xlabel, show_ylabel, show_legend : bool or None
+        Fine-grained control over label/legend visibility (defaults follow show_labels)
+    legend_loc : str
+        Matplotlib legend location string
+    legend_bbox : tuple
+        bbox_to_anchor tuple for legend placement
+    
+    Returns:
+    --------
+    im : matplotlib.image.AxesImage
+        The image object
+    """
+    # Use the requested time_range for a consistent x-axis extent across plots
+    im = ax.imshow(padded_positions, aspect='equal', cmap='gray',
+                   extent=[time_range[0], time_range[1], 0, len(padded_positions)],
+                   origin='lower', vmin=vmin, vmax=vmax, interpolation='nearest')
+    
+    # Add shaded areas between onset and offset times of laser
+    # Iterate over all strides (rows in padded_positions)
+    n_strides = len(padded_positions)
+    n_laser = len(stride_laser_onsets)
+    
+    if n_strides != n_laser:
+        print(f"Warning: positions has {n_strides} strides but laser data has {n_laser} entries")
+    
+    for t in range(n_strides):
+        # Only draw laser patch if we have laser data for this stride
+        if t < n_laser:
+            onset = stride_laser_onsets[t]
+            offset = stride_laser_offsets[t]
+            # Check for valid (non-NaN, non-None) values
+            if onset is not None and offset is not None:
+                try:
+                    if not (np.isnan(onset) or np.isnan(offset)):
+                        ax.fill_betweenx(
+                            y=[t, t+1],
+                            x1=onset,
+                            x2=offset,
+                            color=laser_color,
+                            alpha=0.3, lw=0.1
+                        )
+                except (TypeError, ValueError):
+                    # Skip if values can't be checked for NaN
+                    pass
+    
+    ax.set_xlim(time_range[0], time_range[1])
+    ax.set_ylim(0, len(padded_positions))
+    ax.axvline(x=0, color=paw_color, linestyle='--', linewidth=1, label=center + ' onset')
+    
+    # Resolve per-element visibility (defaults follow legacy show_labels)
+    if show_xlabel is None:
+        show_xlabel = show_labels
+    if show_ylabel is None:
+        show_ylabel = show_labels
+    if show_legend is None:
+        show_legend = show_labels
+
+    if title:
+        ax.set_title(title, fontsize=10)
+
+    if show_xlabel:
+        ax.set_xlabel('Time (ms)')
+    if show_ylabel:
+        ax.set_ylabel('Stride Index')
+    if show_legend:
+        ax.legend(loc=legend_loc, bbox_to_anchor=legend_bbox, fontsize=8, frameon=False)
+    
+    return im
