@@ -179,48 +179,54 @@ class otrack_class:
         timestamps_session = []
         frame_counter_session = []
         for t, f in enumerate(files_ordered):
-            sync_csv = pd.read_csv(os.path.join(self.path, f))
-            [sync_timestamps_p0, sync_signal_p0] = self.get_port_data(sync_csv, 0) #read channel 0 of synchronizer - TRIAL START
-            sync_signal_p0_on_idx = np.where(sync_signal_p0 > 0)[0][0]
-            sync_signal_p0_off_idx = np.where(sync_signal_p0 > 0)[0][-1]
-            time_beg = sync_timestamps_p0[sync_signal_p0_on_idx] #time when trial start signal started
-            time_end = sync_timestamps_p0[sync_signal_p0_off_idx] #time when trial start signal ended
-            timestamps_p1 = np.arange(time_beg, time_end, 3) #since cam is triggered all triggers should appear every 3ms between trial start ON
-            [sync_timestamps_p1, sync_signal_p1] = self.get_port_data(sync_csv, 1) #read channel 1 of synchronizer - CAMERA TRIGGERS
-            [sync_timestamps_p2, sync_signal_p2] = self.get_port_data(sync_csv, 2)
-            [sync_timestamps_p3, sync_signal_p3] = self.get_port_data(sync_csv, 3)  # read channel 3 of synchronizer - LASER TRIAL SYNCH
-            # if animal == 'MC16851', MC16846, MC16850 and split right fast or left fast stance:
-            # [sync_timestamps_p2, sync_signal_p2] = self.get_port_data(sync_csv, 5)  # read channel 2 of synchronizer - LASER SYNCH
-            # [sync_timestamps_p3, sync_signal_p3] = self.get_port_data(sync_csv, 6)  # read channel 3 of synchronizer - LASER TRIAL SYNCH
-            trial_p0_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p0)))
-            trial_p1_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p1)))
-            trial_p2_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p2)))
-            trial_p3_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p3)))
-            p0_signal_list.extend(sync_signal_p0)
-            p1_signal_list.extend(sync_signal_p1)
-            p2_signal_list.extend(sync_signal_p2)
-            p3_signal_list.extend(sync_signal_p3)
-            p0_time_list.extend(sync_timestamps_p0/1000)
-            p1_time_list.extend(sync_timestamps_p1/1000)
-            p2_time_list.extend(sync_timestamps_p2/1000)
-            p3_time_list.extend(sync_timestamps_p3/1000)
-            if plot_data: # plot channel 0 and 1 from synchronizer to see
-                plt.figure()
-                plt.plot(sync_timestamps_p1/1000, sync_signal_p1)
-                plt.plot(sync_timestamps_p0/1000, sync_signal_p0, linewidth=2)
-                plt.title('Sync data for trial '+str(t+1))
-                plt.xlabel('Time (ms)')
-                plt.figure()
-                plt.plot(sync_timestamps_p2/1000, sync_signal_p2)
-                plt.title('Laser sync data for trial ' + str(self.trials[t]))
-                plt.xlabel('Time (ms)')
-                plt.figure()
-                plt.plot(sync_timestamps_p3/1000, sync_signal_p3)
-                plt.title('Laser trial sync data for trial ' + str(self.trials[t]))
-                plt.xlabel('Time (ms)')
-            camera_timestamps_in = timestamps_p1[frames_kept[t][frames_kept[t]<len(timestamps_p1)]] / 1000
-            timestamps_session.append(camera_timestamps_in)
-            frame_counter_session.append(frames_kept[t])
+            try:
+                sync_csv = pd.read_csv(os.path.join(self.path, f))
+                if sync_csv.empty:
+                    raise ValueError(f"Empty sync file found: {f}")
+                [sync_timestamps_p0, sync_signal_p0] = self.get_port_data(sync_csv, 0) #read channel 0 of synchronizer - TRIAL START
+                sync_signal_p0_on_idx = np.where(sync_signal_p0 > 0)[0][0]
+                sync_signal_p0_off_idx = np.where(sync_signal_p0 > 0)[0][-1]
+                time_beg = sync_timestamps_p0[sync_signal_p0_on_idx] #time when trial start signal started
+                time_end = sync_timestamps_p0[sync_signal_p0_off_idx] #time when trial start signal ended
+                timestamps_p1 = np.arange(time_beg, time_end, 3) #since cam is triggered all triggers should appear every 3ms between trial start ON
+                [sync_timestamps_p1, sync_signal_p1] = self.get_port_data(sync_csv, 1) #read channel 1 of synchronizer - CAMERA TRIGGERS
+                [sync_timestamps_p2, sync_signal_p2] = self.get_port_data(sync_csv, 2)
+                [sync_timestamps_p3, sync_signal_p3] = self.get_port_data(sync_csv, 3)  # read channel 3 of synchronizer - LASER TRIAL SYNCH
+                # if animal == 'MC16851', MC16846, MC16850 and split right fast or left fast stance:
+                # [sync_timestamps_p2, sync_signal_p2] = self.get_port_data(sync_csv, 5)  # read channel 2 of synchronizer - LASER SYNCH
+                # [sync_timestamps_p3, sync_signal_p3] = self.get_port_data(sync_csv, 6)  # read channel 3 of synchronizer - LASER TRIAL SYNCH
+                trial_p0_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p0)))
+                trial_p1_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p1)))
+                trial_p2_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p2)))
+                trial_p3_list_session.extend(np.repeat(self.trials[t], len(sync_timestamps_p3)))
+                p0_signal_list.extend(sync_signal_p0)
+                p1_signal_list.extend(sync_signal_p1)
+                p2_signal_list.extend(sync_signal_p2)
+                p3_signal_list.extend(sync_signal_p3)
+                p0_time_list.extend(sync_timestamps_p0/1000)
+                p1_time_list.extend(sync_timestamps_p1/1000)
+                p2_time_list.extend(sync_timestamps_p2/1000)
+                p3_time_list.extend(sync_timestamps_p3/1000)
+                if plot_data: # plot channel 0 and 1 from synchronizer to see
+                    plt.figure()
+                    plt.plot(sync_timestamps_p1/1000, sync_signal_p1)
+                    plt.plot(sync_timestamps_p0/1000, sync_signal_p0, linewidth=2)
+                    plt.title('Sync data for trial '+str(t+1))
+                    plt.xlabel('Time (ms)')
+                    plt.figure()
+                    plt.plot(sync_timestamps_p2/1000, sync_signal_p2)
+                    plt.title('Laser sync data for trial ' + str(self.trials[t]))
+                    plt.xlabel('Time (ms)')
+                    plt.figure()
+                    plt.plot(sync_timestamps_p3/1000, sync_signal_p3)
+                    plt.title('Laser trial sync data for trial ' + str(self.trials[t]))
+                    plt.xlabel('Time (ms)')
+                camera_timestamps_in = timestamps_p1[frames_kept[t][frames_kept[t]<len(timestamps_p1)]] / 1000
+                timestamps_session.append(camera_timestamps_in)
+                frame_counter_session.append(frames_kept[t])
+            except Exception as e:
+                print(f"Unexpected error processing file {f}: {e}")
+                return None, None, None, None, None, None
         if not os.path.exists(os.path.join(self.path, 'processed files', animal)):  # save camera timestamps and frame counter in processed files
             os.mkdir(os.path.join(self.path, 'processed files', animal))
         trial_signals = pd.DataFrame({'time': p0_time_list, 'trial': trial_p0_list_session, 'signal': p0_signal_list})
@@ -234,7 +240,7 @@ class otrack_class:
         np.save(os.path.join(self.path, 'processed files', animal, 'timestamps_session.npy'), np.array(timestamps_session, dtype=object), allow_pickle=True)
         np.save(os.path.join(self.path, 'processed files', animal, 'frame_counter_session.npy'), np.array(frame_counter_session, dtype=object), allow_pickle=True)
         return timestamps_session, frame_counter_session, trial_signals, cam_signals, laser_signals, laser_trial_signals
-
+    
     def get_otrack_excursion_data(self, timestamps_session, animal):
         """Get the online tracking data (timestamps, frame counter, paw position x and y).
         Use the first timestamps from the whole video to generate the sliced timestamps
