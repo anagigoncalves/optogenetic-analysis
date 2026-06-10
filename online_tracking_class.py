@@ -628,6 +628,12 @@ class otrack_class:
         """Interpolates NaNs in numpy arrays
         Input: A (numpy array)"""
         ok = ~np.isnan(A)
+        if not ok.any():
+            # All values are NaN, nothing to interpolate from
+            return A
+        if ok.all():
+            # No NaNs to fill
+            return A
         xp = ok.ravel().nonzero()[0]
         fp = A[~np.isnan(A)]
         x  = np.isnan(A).ravel().nonzero()[0]
@@ -1333,7 +1339,12 @@ class otrack_class:
         if paw == 'HL':
             paw_idx = 3
         trial_idx = np.where(trials == trial)[0][0]
-        final_tracks_phase_paw = self.inpaint_nans(final_tracks_phase[trial_idx][0, paw_idx, :])
+        raw_phase = final_tracks_phase[trial_idx][0, paw_idx, :]
+        # Skip trial if phase data is all NaN (no valid strides detected for this paw)
+        if np.all(np.isnan(raw_phase)):
+            print(f'Warning: trial {trial} has no valid stride data for paw {paw} – skipping phase computation.')
+            return [], [], 0, 0
+        final_tracks_phase_paw = self.inpaint_nans(raw_phase)
         if event == 'stance':
             offtrack_trial = offtracks_st.loc[offtracks_st['trial'] == trial]
             offtrack_other_trial = offtracks_sw.loc[offtracks_sw['trial'] == trial]
@@ -1490,7 +1501,12 @@ class otrack_class:
         if paw == 'HL':
             paw_idx = 3
         trial_idx = np.where(trials == trial)[0][0]
-        final_tracks_phase_paw = self.inpaint_nans(final_tracks_phase[trial_idx][0, paw_idx, :])
+        raw_phase = final_tracks_phase[trial_idx][0, paw_idx, :]
+        # Skip trial if phase data is all NaN (no valid strides detected for this paw)
+        if np.all(np.isnan(raw_phase)):
+            print(f'Warning: trial {trial} has no valid stride data for paw {paw} – skipping predicted cspk phase computation.')
+            return [], [], 0, 0
+        final_tracks_phase_paw = self.inpaint_nans(raw_phase)
         if event == 'stance':
             offtrack_trial = offtracks_st.loc[offtracks_st['trial'] == trial]
             offtrack_other_trial = offtracks_sw.loc[offtracks_sw['trial'] == trial]
@@ -2218,7 +2234,7 @@ class otrack_class:
         fraction_strides_stim_off = np.sum(light_offset_phase_viz_hist[0]) / stride_nr
         return fraction_strides_stim_on, fraction_strides_stim_off
 
-    def plot_laser_presentation_phase_hist(self, onset_data, offset_data, fontsize_plot, path_save, plot_name, print_plots):
+    def plot_laser_presentation_phase_hist(self, onset_data, offset_data, fontsize_plot, path_save, plot_name, print_plots, laser_event, hist_type='step', bs=0.02):
         """Plots the histograms (step-like) of the onset and offset phases of light stimulations with the stride
         in the phase in the background.
         Inputs:
@@ -2228,25 +2244,41 @@ class otrack_class:
             path_save: (str) with path to save plots
             plot_name: (str) plot name that can include animal name and session
             print_plots: boolean"""
-        hist_onset = np.histogram(onset_data, range=(
+        bin_size = bs  # desired bin size in phase units
+        n_bins_onset = int((np.max(onset_data) - np.min(onset_data)) / bin_size)  # calculate number of bins
+        n_bins_offset = int((np.max(offset_data) - np.min(offset_data)) / bin_size)  # calculate number of bins
+        hist_onset = np.histogram(onset_data, bins=n_bins_onset, range=(
             np.min(onset_data), np.max(onset_data)))
-        hist_offset = np.histogram(offset_data, range=(
+        hist_offset = np.histogram(offset_data, bins=n_bins_offset, range=(
             np.min(offset_data), np.max(offset_data)))
         weights_onset = np.ones_like(onset_data) / np.max(hist_onset[0])
         weights_offset = np.ones_like(offset_data) / np.max(hist_offset[0])
         amp_plot = 0.5
-        time = np.arange(-1, 2, np.round(1 / self.sr, 3))
+        if laser_event == 'swing':
+            time = np.arange(0, 1.5, np.round(1 / self.sr, 3))
+        elif laser_event == 'stance':
+            time = np.arange(-0.5, 1, np.round(1 / self.sr, 3))
         FR = amp_plot * np.sin(2 * np.pi * time + (np.pi / 2)) + amp_plot
         fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
-        ax.plot(time, FR, color='lightgray', zorder=0)
-        ax.hist(onset_data, histtype='step', color='black', linewidth=4, weights=weights_onset)
-        ax.hist(offset_data, histtype='step', color='dimgray', linewidth=4, weights=weights_offset)
+        if laser_event == 'swing':
+            ax.axvline(x=0.5, color='red', linestyle='--', linewidth=1.5, label=laser_event)
+        elif laser_event == 'stance':
+            ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5, label=laser_event)  
+        ax.plot(time, FR, color='red', zorder=0)
+        ax.hist(onset_data, bins=n_bins_onset, histtype=hist_type, color='dimgray', alpha=0.3, edgecolor='darkgray', linewidth=1, weights=weights_onset)
+        ax.hist(offset_data, bins=n_bins_offset, histtype=hist_type, color='black', alpha=0.3,  edgecolor='black', linewidth=1, weights=weights_offset)
+        ax.axvline(x=np.nanmedian(onset_data), color='dimgray', linestyle='-', linewidth=1.5, label='onset median')
+        ax.axvline(x=np.nanmedian(offset_data), color='black', linestyle='-', linewidth=1.5, label='offset median')
         # ax.hist(onset_data, histtype='step', color='black', linewidth=4)
         # ax.hist(offset_data, histtype='step', color='dimgray', linewidth=4)
-        ax.set_xticks([-1, -0.5, 0, 0.5, 1, 1.5, 2])
-        ax.set_xticklabels(['-100', '-50', '0', '50', '100', '150', '200'])
+        if laser_event == 'swing':
+            ax.set_xticks([ 0, 0.5, 1, 1.5])
+            ax.set_xticklabels([ '0', '50 (sw)', '100', '150'])
+        elif laser_event == 'stance':
+            ax.set_xticks([-0.5, 0, 0.5, 1])
+            ax.set_xticklabels(['-50', '0 (st)', '50', '100'])
         ax.set_xlabel('Phase (%)', fontsize=fontsize_plot)
-        ax.set_ylabel('LED-on counts', fontsize=fontsize_plot)
+        ax.set_ylabel('Laser presentation\ncounts', fontsize=fontsize_plot)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.tick_params(axis='both', which='major', labelsize=fontsize_plot - 2)
@@ -2255,8 +2287,8 @@ class otrack_class:
             plt.savefig(path_save + plot_name + '.svg')
         return
 
-    def plot_laser_presentation_phase_hist_allanimals(self, onset_data, offset_data, fontsize_plot, hist_norm,
-                                        color_onset, color_offset, path_save, plot_name, print_plots):
+    def plot_laser_presentation_phase_hist_allanimals(self, onset_data, offset_data, fontsize_plot, hist_norm, 
+                                        color_onset, color_offset, path_save, plot_name, print_plots, laser_event, hist_type='step', bs=0.02):
         """Plots the histograms (step-like) of the onset and offset phases of light stimulations with the stride
         in the phase in the background. Each line represents one animal.
         Inputs:
@@ -2271,41 +2303,107 @@ class otrack_class:
             print_plots: boolean"""
 
         if hist_norm:
-            amp_plot = 1
+            amp_plot = 0.5
         else:
             amp_plot = 400
-        time = np.arange(-0.5, 1.5, np.round(1 / self.sr, 3))
+        if laser_event == 'swing':
+            time = np.arange(0, 1.5, np.round(1 / self.sr, 3))
+        elif laser_event == 'stance':
+            time = np.arange(-0.5, 1, np.round(1 / self.sr, 3))
         FR = amp_plot * np.sin(2 * np.pi * time + (np.pi / 2))+amp_plot
         fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
-        ax.plot(time, FR, color='lightgray', zorder=0)
+        ax.plot(time, FR, color='red', zorder=0)
+        bin_size = bs  # desired bin size in phase units
         for count_a in range(len(onset_data)):
-            hist_onset = np.histogram(onset_data[count_a], range=(
-                np.min(onset_data[count_a]), np.max(onset_data[count_a])),
-                                      bins=20)
-            hist_offset = np.histogram(offset_data[count_a], range=(
+            n_bins_onset = int((np.max(onset_data[count_a]) - np.min(onset_data[count_a])) / bin_size)  # calculate number of bins
+            n_bins_offset = int((np.max(offset_data[count_a]) - np.min(offset_data[count_a])) / bin_size)  # calculate number of bins
+            hist_onset = np.histogram(onset_data[count_a], bins=n_bins_onset, range=(
+                np.min(onset_data[count_a]), np.max(onset_data[count_a]))
+                                      )
+            hist_offset = np.histogram(offset_data[count_a], bins=n_bins_offset, range=(
                 np.min(offset_data[count_a]), np.max(offset_data[count_a])),
-                                       bins=20)
+                                       )
             if hist_norm:
                 weights_onset = np.ones_like(onset_data[count_a]) / np.max(hist_onset[0])
                 weights_offset = np.ones_like(offset_data[count_a]) / np.max(hist_offset[0])
-                ax.hist(onset_data[count_a], histtype='step', color=color_onset, alpha=1-(count_a)*0.2, linewidth=2, weights=weights_onset)
-                ax.hist(offset_data[count_a], histtype='step', color=color_offset, alpha=1-(count_a)*0.2, linewidth=2, weights=weights_offset)
+                ax.hist(onset_data[count_a], bins=n_bins_onset, histtype=hist_type, color=color_onset, alpha=min(abs(1-(count_a)*0.2),1), linewidth=1, weights=weights_onset)
+                ax.hist(offset_data[count_a], bins=n_bins_offset, histtype=hist_type, color=color_offset, alpha=min(abs(1-(count_a)*0.2),1), linewidth=1, weights=weights_offset)
             else:
-                ax.hist(onset_data[count_a], histtype='step', color=color_onset,
+                ax.hist(onset_data[count_a], bins=n_bins_onset, histtype=hist_type, color=color_onset,
                         alpha=1 - (count_a) * 0.1, linewidth=2)
-                ax.hist(offset_data[count_a], histtype='step', color=color_offset,
+                ax.hist(offset_data[count_a], bins=n_bins_offset, histtype=hist_type, color=color_offset,
                         alpha=1 - (count_a) * 0.1, linewidth=2)
-        ax.set_xticks([-0.5, 0, 0.5, 1, 1.5])
-        ax.set_xticklabels(['-50', '0', '50', '100', '150'])
+        if laser_event == 'swing':
+            ax.set_xticks([ 0, 0.5, 1, 1.5])
+            ax.set_xticklabels([ '0', '50 (sw onset)', '100', '150'])
+        elif laser_event == 'stance':
+            ax.set_xticks([-0.5, 0, 0.5, 1])
+            ax.set_xticklabels(['-50', '0 (st)', '50', '100'])
         ax.set_xlabel('Stride phase (%)', fontsize=fontsize_plot)
         ax.set_ylabel('Laser presentation\ncounts', fontsize=fontsize_plot)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
-        ax.set_xlim(-0.5, 1.5)
+        if laser_event == 'swing':
+            ax.set_xlim(0, 1.5)
+        elif laser_event == 'stance':
+            ax.set_xlim(-0.5, 1)
         ax.tick_params(axis='both', which='major', labelsize=fontsize_plot - 2)
         if print_plots:
-            plt.savefig(path_save + plot_name)
-            plt.savefig(path_save + plot_name + '.svg')
+            plt.savefig(path_save + plot_name + 'separate.png')
+            plt.savefig(path_save + plot_name + 'separate.svg')
+        
+        # All animals together as a single population
+        from itertools import chain
+        fig, ax = plt.subplots(figsize=(7, 5), tight_layout=True)
+        ax.plot(time, FR, color='red', zorder=0, linewidth=0.5)
+        all_onsets = list(chain.from_iterable(onset_data))
+        all_offsets = list(chain.from_iterable(offset_data))
+        n_bins_onset = int((np.max(all_onsets) - np.min(all_onsets)) / bin_size)  # calculate number of bins
+        n_bins_offset = int((np.max(all_offsets) - np.min(all_offsets)) / bin_size)  # calculate number of bins
+        hist_all_onset = np.histogram(all_onsets, bins=n_bins_onset, range=(
+            np.min(all_onsets), np.max(all_onsets))
+                                    )
+        hist_all_offset = np.histogram(all_offsets, bins=n_bins_offset, range=(
+            np.min(all_offsets), np.max(all_offsets)),
+                                    )
+        if hist_norm:
+            weights_all_onset = np.ones_like(all_onsets) / np.max(hist_all_onset[0])
+            weights_all_offset = np.ones_like(all_offsets) / np.max(hist_all_offset[0])
+            ax.hist(all_onsets, bins=n_bins_onset, histtype=hist_type, color=color_onset, linewidth=2, weights=weights_all_onset)
+            ax.hist(all_offsets, bins=n_bins_offset, histtype=hist_type, color=color_offset, linewidth=2, weights=weights_all_offset)
+        else:
+            ax.hist(all_onsets, bins=n_bins_onset, histtype=hist_type, color=color_onset,
+                     linewidth=2)
+            ax.hist(all_offsets, bins=n_bins_offset, histtype=hist_type, color=color_offset,
+                 linewidth=2)
+        if laser_event == 'swing':
+            ax.axvline(x=0.5, color='red', linestyle='--', linewidth=1.5, zorder=10)
+        elif laser_event == 'stance':
+            ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5, zorder=10)
+        ax.axvline(x=np.nanmedian(all_onsets), color=color_onset, linestyle='-', linewidth=1.5)
+        ax.axvline(x=np.nanmedian(all_offsets), color=color_offset, linestyle='-', linewidth=1.5)
+        ax.text(np.nanmedian(all_onsets), ax.get_ylim()[1], 'laser onset', color='black', fontsize=16,
+                ha='right', va='bottom')
+        ax.text(np.nanmedian(all_offsets), ax.get_ylim()[1], 'laser offset', color='black', fontsize=16,
+                ha='left', va='bottom')
+        if laser_event == 'swing':
+            ax.set_xticks([ 0, 0.5, 1, 1.5])
+            ax.set_xticklabels([ '0', '50 (sw onset)', '100', '150'])
+        elif laser_event == 'stance':
+            ax.set_xticks([-0.5, 0, 0.5, 1])
+            ax.set_xticklabels(['-50', '0 (st onset)', '50', '100'])
+        ax.set_xlabel('Stride phase (%)', fontsize=24)
+        ax.set_ylabel('Laser presentation\ncounts', fontsize=24)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        if laser_event == 'swing':
+            ax.set_xlim(0, 1.5)
+        elif laser_event == 'stance':
+            ax.set_xlim(-0.5, 1)
+        ax.tick_params(axis='both', which='major', labelsize=20)
+        if print_plots:
+            plt.savefig(path_save + plot_name + '.png', bbox_inches='tight')
+            plt.savefig(path_save + plot_name + '.svg', bbox_inches='tight')
         return
 
     def plot_laser_presentation_phase_hist_heatmap(self, onset_data, offset_data, fontsize_plot,
