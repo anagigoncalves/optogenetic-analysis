@@ -117,31 +117,31 @@ def add_vertical_lines(fig, x_indices, y_min, y_max, name, color, dash=None, wid
 # =============================================================================
 
 # --- Paths ---
-path = 'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\'
-#path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim retracked with ClosedLoop-AliceG-2025-10-06\\'
+#path = 'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\'
+path = 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\'  #tied stance stim retracked with ClosedLoop-AliceG-2025-10-06\\'
 path_retracked = None  # Optional: path to retracked data for comparison
 
 # --- Session Selection ---
-animal = 'MC2586'          # 'MC16848'     #
+animal = 'VIV42430' #'MC16848'     #
 session = 1
-trial = 9
+trial = 1
 
 # --- Multi-Animal Double Support Analysis ---
 # If animals_ds and trials_ds are defined, run batch double support analysis
-animals_ds = ['MC16848', 'MC16851', 'MC17319', 'MC17665', 'MC17666', 'MC17669', 'MC17670', 'MC19082', 'MC19124', 
-                       'MC19214', 'VIV41329', 'VIV41330', 'VIV42375', 'VIV42428', 'VIV42429', 'VIV42430', 'VIV42376', 'MC19107']       #     ['MC2586']  # List of animals, e.g., ['MC2586', 'MC2587']
-trials_ds = list(np.arange(9, 29))          # List of trials, e.g., [1, 2, 3] or range(1, 10)
+animals_ds = []     #['MC16848', 'MC16851', 'MC17319', 'MC17665', 'MC17666', 'MC17669', 'MC17670', 'MC19082', 'MC19124', 
+                     #  'MC19214', 'VIV41329', 'VIV41330', 'VIV42375', 'VIV42428', 'VIV42429', 'VIV42430', 'VIV42376', #'MC19107']       #     ['MC2586']  # List of animals, e.g., ['MC2586', 'MC2587']
+trials_ds = []      #list(np.arange(1, 29))          # List of trials, e.g., [1, 2, 3] or range(1, 10)
 
 # --- Tracking Parameters ---
 confidence = 0.9      # DLC confidence threshold (0-1)
 floor_offset = 4      # Offset added to Z signal to set floor at zero
-paws = ['FR', 'FL']   # Paws to analyze: 'FR', 'FL', 'HR', 'HL'
+paws = ['FR']   # Paws to analyze: 'FR', 'FL', 'HR', 'HL'
 
 # --- Analysis Options ---
-manual_track = True  # If True, load and compare with manual tracking data
+manual_track = False  # If True, load and compare with manual tracking data
 
 # --- Visualization ---
-show_plots = True     # If True, display interactive plots; if False, only save HTML
+show_plots = False     # If True, display interactive plots; if False, only save HTML
 
 # --- Video Overlay Options ---
 overlay_manual_on_video = False                 # Overlay manual track points on video
@@ -1721,6 +1721,6 @@ else:
         mask = np.abs(diff_vec) > 4
         if np.any(mask):
             print(f"[WARN] {paw_name} double_support |w5-w11| > 4 at {mask.sum()} stride(s):")
-            for i in np.where(mask)[0]:
-                print(f"  stride {i}: diff={diff_vec[i]:.3f}, start={int(starts_use[i])}, end={int(ends_use[i])}")
+            #for i in np.where(mask)[0]:
+            #    print(f"  stride {i}: diff={diff_vec[i]:.3f}, start={int(starts_use[i])}, end={int(ends_use[i])}")
 
