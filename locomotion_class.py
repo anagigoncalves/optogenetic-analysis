@@ -1705,7 +1705,20 @@ class loco_class:
         for f in filelist:
             trials_ordered.append(int(f.split('_')[7][:-3]))
         return np.array(trials_ordered)
-   
+
+    def trials_baseline_split_ordered(self,filelist): 
+        """Gets the baseline trials in order"""
+        trials_tied_ordered = []
+        for f in filelist:
+            if 'tied' in f:
+                trials_tied_ordered.append(int(f.split('_')[7][:-3]))
+        split_indices = np.where(np.diff(trials_tied_ordered) != 1)[0] + 1
+        # Split the array based on discontinuous indices
+        result_baseline = np.split(trials_tied_ordered, split_indices)[0]
+        result = np.split(trials_tied_ordered, split_indices)[1]   
+        result_after = np.split(trials_tied_ordered, split_indices)[2]        
+        return np.array(result_baseline), np.array(result), np.array(result_after)
+    
     def plot_gait_catch(self,param_sym,param,animal,session,trials_split,print_plots):
         """Plots nicely the symmetry parameter that was computed for the whole session
         Input: param_sym - array with gait symmetry value across trials
