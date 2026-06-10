@@ -1013,6 +1013,10 @@ class loco_class:
                 end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
                 sw_vals = safe_index(X_interp[p,:], sw_pts_mat[p][:,0,4])
                 param_mat.append(end_vals - sw_vals)
+            if param == 'stride_length':
+                end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
+                start_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,0,4])
+                param_mat.append(end_vals - start_vals)
             if param == 'swing_velocity':
                 end_vals = safe_index(X_interp[p,:], st_strides_mat[p][:,1,4])
                 sw_vals = safe_index(X_interp[p,:], sw_pts_mat[p][:,0,4])
