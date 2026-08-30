@@ -1,6 +1,536 @@
 import numpy as np
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import csv
+import json
+import scipy.stats as st
 from scipy.interpolate import CubicSpline
+
+
+def save_figure_multi_format(figure, directory, filename, dpi=128, bbox_inches=None):
+    """Save a figure as PNG plus EPS/SVG copies in dedicated subfolders."""
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+
+    eps_path = os.path.join(directory, 'eps')
+    svg_path = os.path.join(directory, 'svg')
+    if not os.path.exists(eps_path):
+        os.mkdir(eps_path)
+    if not os.path.exists(svg_path):
+        os.mkdir(svg_path)
+
+    filename_root = os.path.splitext(filename)[0]
+    save_kwargs = {'dpi': dpi}
+    if bbox_inches is not None:
+        save_kwargs['bbox_inches'] = bbox_inches
+
+    figure.savefig(os.path.join(directory, filename_root + '.png'), **save_kwargs)
+    figure.savefig(os.path.join(eps_path, filename_root + '.eps'), **save_kwargs)
+    figure.savefig(os.path.join(svg_path, filename_root + '.svg'), **save_kwargs)
+
+
+def add_output_suffix(filename, suffix):
+    if not suffix:
+        return filename
+    filename_root, filename_ext = os.path.splitext(filename)
+    return f'{filename_root}{suffix}{filename_ext}'
+
+
+def get_stance_phase_reference_suffix(reference_mode):
+    if reference_mode == 'slow_hind':
+        return ''
+    if reference_mode == 'ipsi_hind':
+        return '_ipsi_hind_ref'
+    raise ValueError(f'Unknown stance_phase_reference_mode: {reference_mode}')
+
+
+def get_phase_st_output_filename(filename, reference_mode):
+    return add_output_suffix(filename, get_stance_phase_reference_suffix(reference_mode))
+
+
+def sanitize_filename_label(label):
+    return label.replace(' ', '_')
+
+
+def win_safe_path(path_value: str) -> str:
+    """Prefix long Windows paths with \\?\ to reduce MAX_PATH issues."""
+    try:
+        if os.name == 'nt':
+            normalized_path = os.path.normpath(path_value)
+            if len(normalized_path) > 240 and not normalized_path.startswith('\\\\?\\'):
+                return '\\\\?\\' + normalized_path
+            return normalized_path
+        return path_value
+    except Exception:
+        return path_value
+
+
+def finite_array(values):
+    array_values = np.asarray(values, dtype=float).ravel()
+    return array_values[np.isfinite(array_values)]
+
+
+def load_json(json_path):
+    with open(json_path, encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def load_cspk_histogram_data(
+    folder,
+    dataset_name,
+    histogram_suffix,
+    metadata_suffix,
+    histogram_time_column,
+    histogram_count_column,
+    metadata_bin_size_column,
+    metadata_laser_duration_column,
+):
+    if not folder or not dataset_name:
+        return None
+
+    histogram_path = os.path.join(folder, f'{dataset_name}{histogram_suffix}')
+    metadata_path = os.path.join(folder, f'{dataset_name}{metadata_suffix}')
+
+    if not os.path.exists(histogram_path):
+        raise FileNotFoundError(f'CSpk histogram file not found: {histogram_path}')
+    if not os.path.exists(metadata_path):
+        raise FileNotFoundError(f'CSpk metadata file not found: {metadata_path}')
+
+    with open(histogram_path, newline='') as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f'CSpk histogram file is missing a header row: {histogram_path}')
+        missing_columns = [
+            column for column in (histogram_time_column, histogram_count_column)
+            if column not in reader.fieldnames
+        ]
+        if missing_columns:
+            raise ValueError(
+                f'CSpk histogram file is missing required columns {missing_columns}: {histogram_path}'
+            )
+
+        histogram_rows = list(reader)
+
+    if len(histogram_rows) == 0:
+        raise ValueError(f'CSpk histogram file has no data rows: {histogram_path}')
+
+    bin_centers_ms = 1000 * np.array([
+        float(row[histogram_time_column]) for row in histogram_rows
+    ], dtype=float)
+    counts = np.array([
+        float(row[histogram_count_column]) for row in histogram_rows
+    ], dtype=float)
+
+    if not np.any(np.isfinite(bin_centers_ms)) or not np.any(np.isfinite(counts)):
+        raise ValueError(f'CSpk histogram file contains no finite data: {histogram_path}')
+
+    metadata_row = load_json(metadata_path)
+    missing_metadata = [
+        column for column in (metadata_bin_size_column, metadata_laser_duration_column)
+        if column not in metadata_row or metadata_row[column] == ''
+    ]
+    if missing_metadata:
+        raise ValueError(
+            f'CSpk metadata file is missing required fields {missing_metadata}: {metadata_path}'
+        )
+
+    bin_size_ms = 1000 * float(metadata_row[metadata_bin_size_column])
+    laser_duration_ms = 1000 * float(metadata_row[metadata_laser_duration_column])
+
+    sort_idx = np.argsort(bin_centers_ms)
+    bin_centers_ms = bin_centers_ms[sort_idx]
+    counts = counts[sort_idx]
+
+    positive_counts = np.clip(counts, a_min=0, a_max=None)
+    if np.nansum(positive_counts) <= 0:
+        raise ValueError(f'CSpk histogram counts must contain positive values: {histogram_path}')
+
+    if bin_centers_ms.size > 1:
+        observed_bin_size_ms = float(np.nanmedian(np.diff(bin_centers_ms)))
+        if not np.isfinite(observed_bin_size_ms) or observed_bin_size_ms <= 0:
+            raise ValueError(f'CSpk histogram bin centers are not regularly spaced: {histogram_path}')
+        if not np.isclose(observed_bin_size_ms, bin_size_ms, atol=1e-6):
+            raise ValueError(
+                'CSpk histogram bin size does not match metadata: '
+                f'{observed_bin_size_ms} ms in histogram vs {bin_size_ms} ms in metadata'
+            )
+
+    return {
+        'histogram_path': histogram_path,
+        'metadata_path': metadata_path,
+        'bin_centers_ms': bin_centers_ms,
+        'counts': positive_counts,
+        'bin_size_ms': bin_size_ms,
+        'laser_duration_ms': laser_duration_ms,
+    }
+
+
+def weighted_median_from_histogram(bin_centers, weights):
+    finite_mask = np.isfinite(bin_centers) & np.isfinite(weights)
+    finite_bin_centers = np.asarray(bin_centers, dtype=float)[finite_mask]
+    finite_weights = np.asarray(weights, dtype=float)[finite_mask]
+    if finite_bin_centers.size == 0:
+        raise ValueError('Cannot compute a weighted median from an empty histogram.')
+
+    positive_weights = np.clip(finite_weights, a_min=0, a_max=None)
+    total_weight = np.sum(positive_weights)
+    if total_weight <= 0:
+        raise ValueError('Cannot compute a weighted median from non-positive histogram weights.')
+
+    sort_idx = np.argsort(finite_bin_centers)
+    sorted_centers = finite_bin_centers[sort_idx]
+    sorted_weights = positive_weights[sort_idx]
+    cumulative_weights = np.cumsum(sorted_weights)
+    median_idx = np.searchsorted(cumulative_weights, total_weight / 2, side='left')
+    median_idx = min(median_idx, sorted_centers.size - 1)
+    return sorted_centers[median_idx]
+
+
+def build_expected_cspk_histogram(event_times_ms, bin_edges_ms, cspk_histogram_data, use_laser_offset):
+    finite_event_times = finite_array(event_times_ms)
+    if finite_event_times.size == 0:
+        raise ValueError('No finite laser event times were found for the convolution-based CSpk plot.')
+
+    if len(bin_edges_ms) < 2:
+        raise ValueError('At least two bin edges are required to build the expected CSpk histogram.')
+
+    analysis_bin_width_ms = float(bin_edges_ms[1] - bin_edges_ms[0])
+    if not np.allclose(np.diff(bin_edges_ms), analysis_bin_width_ms):
+        raise ValueError('Histogram bin edges must have a constant bin width for convolution.')
+
+    event_counts, _ = np.histogram(finite_event_times, bins=bin_edges_ms)
+    event_bin_centers = bin_edges_ms[:-1] + analysis_bin_width_ms / 2
+
+    kernel_time_ms = np.array(cspk_histogram_data['bin_centers_ms'], dtype=float)
+    if use_laser_offset:
+        kernel_time_ms = kernel_time_ms - cspk_histogram_data['laser_duration_ms']
+    kernel_counts = np.array(cspk_histogram_data['counts'], dtype=float)
+
+    kernel_min = analysis_bin_width_ms * np.floor(np.nanmin(kernel_time_ms) / analysis_bin_width_ms)
+    kernel_max = analysis_bin_width_ms * np.ceil(np.nanmax(kernel_time_ms) / analysis_bin_width_ms)
+    kernel_bin_centers = np.arange(kernel_min, kernel_max + analysis_bin_width_ms * 0.5, analysis_bin_width_ms)
+    if kernel_bin_centers.size == 0:
+        raise ValueError('The external CSpk histogram produced an empty kernel after rebinning.')
+
+    kernel_weights = np.interp(kernel_bin_centers, kernel_time_ms, kernel_counts, left=0.0, right=0.0)
+    kernel_weights = np.clip(kernel_weights, a_min=0, a_max=None)
+    kernel_sum = np.nansum(kernel_weights)
+    if kernel_sum <= 0:
+        raise ValueError('The rebinned CSpk histogram kernel is empty after interpolation.')
+    kernel_weights = kernel_weights / kernel_sum
+
+    expected_counts = np.convolve(event_counts, kernel_weights, mode='full')
+    expected_bin_centers = (
+        event_bin_centers[0] + kernel_bin_centers[0] + analysis_bin_width_ms * np.arange(expected_counts.size)
+    )
+
+    return {
+        'event_counts': event_counts,
+        'event_bin_centers': event_bin_centers,
+        'kernel_bin_centers': kernel_bin_centers,
+        'kernel_weights': kernel_weights,
+        'expected_counts': expected_counts,
+        'expected_bin_centers': expected_bin_centers,
+    }
+
+
+def get_stance_phase_reference_paw(experiment_name, animal, reference_mode, left_animals, right_animals, bilateral_animals):
+    if reference_mode == 'slow_hind':
+        ref_paw = 3
+        if ('contra' in experiment_name and animal in right_animals) or ('ipsi' in experiment_name and animal in left_animals) or ('ipsi' in experiment_name and animal in bilateral_animals):
+            ref_paw = 1
+        return ref_paw
+
+    if reference_mode == 'ipsi_hind':
+        if experiment_name == 'WT':
+            return 1
+        if animal in left_animals:
+            return 3
+        if animal in right_animals or animal in bilateral_animals:
+            return 1
+        return get_stance_phase_reference_paw(experiment_name, animal, 'slow_hind', left_animals, right_animals, bilateral_animals)
+
+    raise ValueError(f'Unknown stance_phase_reference_mode: {reference_mode}')
+
+
+def get_paw_plot_labels(experiment_name, experiment_names, paws):
+    """Return display and filename labels for the current paw ordering."""
+    if 'contra' in experiment_name or 'ipsi' in experiment_name:
+        return ['FF', 'HF', 'FS', 'HS'], ['FF', 'HF', 'FS', 'HS']
+    if any('right' in element for element in experiment_names) and any('left' in element for element in experiment_names):
+        return ['FF', 'HF', 'FS', 'HS'], ['FF', 'HF', 'FS', 'HS']
+    if 'right' in experiment_name:
+        return ['FF', 'HF', 'FS', 'HS'], ['FF', 'HF', 'FS', 'HS']
+    if 'left' in experiment_name:
+        return ['FS', 'HS', 'FF', 'HF'], ['FS', 'HS', 'FF', 'HF']
+    return list(paws), list(paws)
+
+
+def get_experiment_name_for_path(path, experiment_names):
+    for experiment_name in experiment_names:
+        if experiment_name in path:
+            return experiment_name
+    return os.path.basename(os.path.normpath(path))
+
+
+def get_path_color(experiment_name, path_index, experiment_colors_dict, color_cycle=None):
+    if color_cycle is None:
+        color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    if experiment_name in experiment_colors_dict:
+        return experiment_colors_dict[experiment_name]
+    for label, color in experiment_colors_dict.items():
+        if label in experiment_name or experiment_name in label:
+            return color
+    return color_cycle[path_index % len(color_cycle)]
+
+
+def get_summary_limb_order(experiment_names, paws):
+    if any(('contra' in name) or ('ipsi' in name) for name in experiment_names):
+        return [0, 2, 1, 3], ['FF', 'FS', 'HF', 'HS']
+    if any('right' in name for name in experiment_names) and any('left' in name for name in experiment_names):
+        return [0, 2, 1, 3], ['FF', 'FS', 'HF', 'HS']
+    if any('right' in name for name in experiment_names):
+        return [0, 2, 1, 3], ['FF', 'FS', 'HF', 'HS']
+    if any('left' in name for name in experiment_names):
+        return [2, 0, 3, 1], ['FF', 'FS', 'HF', 'HS']
+    return list(range(len(paws))), list(paws)
+
+
+def normalize_summary_scatter_paw_label(label):
+    alias_map = {
+        'FR': 'FR',
+        'FL': 'FL',
+        'HR': 'HR',
+        'HL': 'HL',
+        'FF': 'FR',
+        'FS': 'FL',
+        'HF': 'HR',
+        'HS': 'HL',
+    }
+    return alias_map.get(label, label)
+
+
+def compare_metric_groups(reference_values, comparison_values, statistics_test, paired=None, reference_names=None, comparison_names=None):
+    reference_values = np.asarray(reference_values, dtype=float)
+    comparison_values = np.asarray(comparison_values, dtype=float)
+
+    if paired is None:
+        paired = (
+            reference_names is not None
+            and comparison_names is not None
+            and list(reference_names) == list(comparison_names)
+            and len(reference_values) == len(comparison_values)
+        )
+
+    if paired:
+        valid_mask = np.isfinite(reference_values) & np.isfinite(comparison_values)
+        reference_clean = reference_values[valid_mask]
+        comparison_clean = comparison_values[valid_mask]
+        if len(reference_clean) == 0:
+            return np.nan, 'Wilcoxon' if statistics_test != 'ttest' else 'paired t-test'
+        try:
+            if statistics_test == 'ttest':
+                return st.ttest_rel(reference_clean, comparison_clean).pvalue, 'paired t-test'
+            return st.wilcoxon(reference_clean, comparison_clean).pvalue, 'Wilcoxon'
+        except ValueError:
+            return np.nan, 'Wilcoxon' if statistics_test != 'ttest' else 'paired t-test'
+
+    reference_clean = reference_values[np.isfinite(reference_values)]
+    comparison_clean = comparison_values[np.isfinite(comparison_values)]
+    if len(reference_clean) == 0 or len(comparison_clean) == 0:
+        return np.nan, 'Mann-Whitney U' if statistics_test != 'ttest' else 't-test'
+    if statistics_test == 'ttest':
+        return st.ttest_ind(reference_clean, comparison_clean, equal_var=False).pvalue, 't-test'
+    return st.mannwhitneyu(reference_clean, comparison_clean, alternative='two-sided').pvalue, 'Mann-Whitney U'
+
+
+def compare_metric_against_zero(values, statistics_test):
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        return np.nan, 'Wilcoxon vs 0' if statistics_test != 'ttest' else 'one-sample t-test'
+    try:
+        if statistics_test == 'ttest':
+            return st.ttest_1samp(values, 0.0, nan_policy='omit').pvalue, 'one-sample t-test'
+        return st.wilcoxon(values, zero_method='wilcox').pvalue, 'Wilcoxon vs 0'
+    except ValueError:
+        return np.nan, 'Wilcoxon vs 0' if statistics_test != 'ttest' else 'one-sample t-test'
+
+
+def pvalue_to_label(pvalue):
+    if pvalue is None or not np.isfinite(pvalue):
+        return 'n.s.'
+    if pvalue < 0.001:
+        return '**'
+    if pvalue < 0.05:
+        return '*'
+    return 'n.s.'
+
+
+def pvalue_to_annotation(pvalue):
+    if pvalue is None or not np.isfinite(pvalue):
+        return 'n.s.'
+    if pvalue < 0.001:
+        return '**'
+    if pvalue < 0.05:
+        return '*'
+    return f'p={pvalue:.2f}'
+
+
+def annotation_fontsize(annotation_text):
+    if annotation_text in {'*', '**'}:
+        return 14
+    if annotation_text.startswith('p='):
+        return 9
+    return 10
+
+
+def plot_limb_metric_scatter(metric_by_path, path_display_names, path_colors, summary_colors_by_path, limb_labels, limb_colors, ylabel, stat_results=None, stat_mode='between_paths', fig_size=(5, 3)):
+    scatter_width = max(3.0, fig_size[0] * (len(limb_labels) / 4))
+    fig, ax = plt.subplots(figsize=(scatter_width, fig_size[1]), tight_layout=True)
+    n_paths = len(path_display_names)
+    x_positions = np.arange(1, len(limb_labels) + 1)
+    offsets = np.linspace(-0.25, 0.25, n_paths) if n_paths > 1 else np.array([0.0])
+
+    for limb_idx, limb_label in enumerate(limb_labels):
+        for path_idx, path_name in enumerate(path_display_names):
+            values = np.asarray(metric_by_path[path_idx][limb_idx], dtype=float)
+            valid_mask = np.isfinite(values)
+            values = values[valid_mask]
+            x_coord = x_positions[limb_idx] + offsets[path_idx]
+            if len(values) == 0:
+                continue
+            ax.scatter(
+                np.full(len(values), x_coord),
+                values,
+                s=30,
+                c=summary_colors_by_path[path_idx][limb_idx],
+                edgecolors=summary_colors_by_path[path_idx][limb_idx],
+                linewidth=0.8,
+                alpha=0.9,
+                zorder=3,
+            )
+            ax.plot(
+                [x_coord - 0.10, x_coord + 0.10],
+                [np.nanmean(values), np.nanmean(values)],
+                color=summary_colors_by_path[path_idx][limb_idx],
+                linewidth=2.5,
+                zorder=4,
+            )
+
+    ax.axhline(y=0, color='k', linestyle='--', linewidth=0.5)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(limb_labels)
+    ax.set_ylabel(ylabel, fontsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+
+    all_values = []
+    for path_metrics in metric_by_path:
+        for limb_metrics in path_metrics:
+            valid_values = np.asarray(limb_metrics, dtype=float)
+            valid_values = valid_values[np.isfinite(valid_values)]
+            if len(valid_values) > 0:
+                all_values.append(valid_values)
+    if all_values:
+        global_min = min(np.min(values) for values in all_values)
+        global_max = max(np.max(values) for values in all_values)
+    else:
+        global_min, global_max = -1, 1
+    y_range = max(global_max - global_min, 1)
+
+    if stat_results is not None and len(stat_results) > 0 and stat_mode == 'between_paths':
+        for limb_idx in range(len(limb_labels)):
+            limb_values = []
+            for path_metrics in metric_by_path:
+                values = np.asarray(path_metrics[limb_idx], dtype=float)
+                values = values[np.isfinite(values)]
+                if len(values) > 0:
+                    limb_values.append(values)
+            limb_max = max((np.max(values) for values in limb_values), default=global_max)
+            for comparison_idx, pvalues in enumerate(stat_results):
+                if limb_idx >= len(pvalues):
+                    continue
+                pvalue = pvalues[limb_idx]
+                label = pvalue_to_annotation(pvalue)
+                x1 = x_positions[limb_idx] + offsets[0]
+                x2 = x_positions[limb_idx] + offsets[comparison_idx + 1]
+                y = limb_max + y_range * (0.08 + 0.10 * comparison_idx)
+                ax.plot([x1, x2], [y, y], color='k', linewidth=0.7)
+                ax.text((x1 + x2) / 2, y + y_range * 0.02, label, ha='center', va='bottom', fontsize=annotation_fontsize(label))
+        top_padding = y_range * (0.22 + 0.10 * max(len(stat_results) - 1, 0))
+        ax.set_ylim(global_min - 0.08 * y_range, global_max + top_padding)
+    elif stat_results is not None and len(stat_results) > 0 and stat_mode == 'vs_zero':
+        for limb_idx in range(len(limb_labels)):
+            limb_values = []
+            for path_metrics in metric_by_path:
+                values = np.asarray(path_metrics[limb_idx], dtype=float)
+                values = values[np.isfinite(values)]
+                if len(values) > 0:
+                    limb_values.append(values)
+            limb_max = max((np.max(values) for values in limb_values), default=global_max)
+            for path_idx, pvalues in enumerate(stat_results):
+                if limb_idx >= len(pvalues):
+                    continue
+                x = x_positions[limb_idx] + offsets[path_idx]
+                y = limb_max + y_range * (0.08 + 0.08 * path_idx)
+                label = pvalue_to_annotation(pvalues[limb_idx])
+                ax.text(x, y, label, ha='center', va='bottom', fontsize=annotation_fontsize(label))
+        top_padding = y_range * (0.18 + 0.08 * max(len(stat_results) - 1, 0))
+        ax.set_ylim(global_min - 0.08 * y_range, global_max + top_padding)
+
+    return fig
+
+
+def plot_front_paws_average(param_values, animal_ids, ylabel, title, fig_size, split_start, split_duration, stim_start, stim_duration, baseline_centered, n_trials, paw_colors, paws, y_limits=None):
+    fig, ax = plt.subplots(figsize=fig_size, tight_layout=True)
+    if y_limits is not None:
+        ax.set_ylim(y_limits)
+        rectangle_y = y_limits[0]
+        rectangle_height = y_limits[1] - y_limits[0]
+    else:
+        selected_values = param_values[animal_ids, [0, 2], :]
+        rectangle_y = np.nanmin(selected_values)
+        rectangle_height = np.nanmax(selected_values) - rectangle_y
+    rectangle = plt.Rectangle(
+        (split_start - 0.5, rectangle_y),
+        split_duration,
+        rectangle_height,
+        fc='lightgray',
+        alpha=0.3,
+    )
+    ax.add_patch(rectangle)
+    ax.axvline(x=stim_start - 0.5, color='k', linestyle='-', linewidth=0.5)
+    ax.axvline(x=stim_start + stim_duration - 0.5, color='k', linestyle='-', linewidth=0.5)
+    if baseline_centered:
+        ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
+
+    x_values = np.arange(1, n_trials + 1)
+    for paw_idx in [0, 2]:
+        paw_data = param_values[animal_ids, paw_idx, :]
+        paw_mean = np.nanmean(paw_data, axis=0)
+        paw_sem = np.nanstd(paw_data, axis=0) / np.sqrt(len(animal_ids))
+        ax.plot(x_values, paw_mean, color=paw_colors[paw_idx], linewidth=3, label=paws[paw_idx])
+        ax.fill_between(x_values, paw_mean - paw_sem, paw_mean + paw_sem, color=paw_colors[paw_idx], alpha=0.35)
+
+    ax.set_xlabel('Trial', fontsize=28)
+    ax.set_ylabel(ylabel, fontsize=28)
+    ax.set_title(title, fontsize=24)
+    ax.tick_params(axis='both', which='major', labelsize=24)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.legend(frameon=False)
+    return fig
+
+
+def get_param_output_name(param_name, reference_mode):
+    if param_name == 'phase_st':
+        return get_phase_st_output_filename(param_name, reference_mode)
+    return param_name
+
+
 def get_baseline_scatter_ylim(param_name, use_uniform_ranges, bars_ranges):
     if not use_uniform_ranges:
         return None

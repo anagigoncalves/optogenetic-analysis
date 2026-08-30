@@ -12,10 +12,11 @@ import seaborn as sns
 import pandas as pd
 
 #path inputs
-#path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\20241106 tied stance onset stim 200st IO batch#4C\\stim trials\\'
-#path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\20240722 power checks CTX\\swing stim\\1mW\\'     
-path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split contra fast\\'
 #path_loco = 'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\'
+#path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\ALL_ANIMALS\\tied th100sw IO 50ms\\'
+#path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT\\LOW expression\\20241106 tied stance onset stim 200st IO batch#4C\\stim trials\\'
+#path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_Rinj\\split left fast CL-Ali\\' 
+path_loco = 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split ipsi fast left CL-Ali\\'
 
 print_plots  = 1
 paw_colors = ['#e52c27', '#ad4397', '#3854a4', '#6fccdf']

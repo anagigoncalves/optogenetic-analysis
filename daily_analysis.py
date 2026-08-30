@@ -21,7 +21,7 @@ if single_animal_analysis:
 plot_continuous = 0
 compare_baselines = 0
 compute_statistics = 1
-scatter_single_animals = 0
+scatter_single_animals = 1
 significance_threshold = 0.05
 
 #axes_ranges = {'coo': [-5, 3], 'step_length': [-12, 5], 'double_support': [-7, 13], 'coo_stance': [-5, 5], 'swing_length': [-5, 12], 'stance_speed': [-0.4,-0.2]}
@@ -50,7 +50,7 @@ experiment_names = ['contra fast right', 'ipsi fast left']   #'th200st' ,'th100s
 
 paths = [
   #   'D:\\AliG\\Miniscopes\\Processed files\\split ipsi fast S1\\',
-    # 'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\',
+ #'D:\\AliG\\climbing-opto-treadmill\\WT split-belt learning\\',
  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim retracked with ClosedLoop-AliceG-2025-10-06\\',
  #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied swing stim retracked with ClosedLoop-AliceG-2025-10-06\\',
     #'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\all REPLAY stim\\',
@@ -73,8 +73,8 @@ paths = [
  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_Linj_CTXstim\\swing stim 100st\\',
 # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split contra fast\\',
  # 'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_LATinj\\split ipsi fast\\',
-   #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split contra fast right\\',
-    #  'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split ipsi fast left\\', 
+     'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split contra fast right CL-Ali\\',
+      'D:\\AliG\\climbing-opto-treadmill\\Experiments ChR2 RT extra-zombies\\HISTO_CHECKED_ANIMALS_RLinj\\split ipsi fast left CL-Ali\\', 
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\testing stim sw st det\\',
   # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied stance stim REPLAY\\',
 # 'D:\\AliG\\climbing-opto-treadmill\\Experiments JAWS RT\\Tied belt sessions\\ALL_ANIMALS\\tied swing stim REPLAY\\',
@@ -173,10 +173,10 @@ included_animal_list = []
 #                        #]           # 'VIV42907',, 'VIV44765' only 100st    # 'VIV42906', 'VIV42908', 'VIV42974', 'VIV42985','VIV42987', only100st and 100sw
 
 # Extra-zombies histology-checked UNIlateral injections
-#included_animal_list_EZ = ['VIV47094', 'VIV47095', 'VIV47147', 'VIV47212', 'VIV49409', 'VIV49410', 'VIV49411', 'VIV49412', 
- #                       'VIV49574', 'VIV49939', 'VIV49940', 'VIV49931', 'VIV49933', 'VIV49934', 'VIV50051']
+included_animal_list_EZ = ['VIV47094', 'VIV47095', 'VIV47147', 'VIV47212', 'VIV49409', 'VIV49410', 'VIV49411', 'VIV49412', 
+                        'VIV49574', 'VIV49939', 'VIV49940', 'VIV49931', 'VIV49933', 'VIV49934', 'VIV50051']
 
-#included_animal_list_EZ_double = ['VIV49935', 'VIV49941', 'VIV50033', 'VIV50034', 'VIV50052']
+included_animal_list_EZ_double = ['VIV49935', 'VIV49941', 'VIV50033', 'VIV50034', 'VIV50052']
 
 # Extra-zombie animals info
 LexpEZ = ['VIV47094', 'VIV47095', 'VIV47147', 'VIV47212', 'VIV49409', 'VIV49410', 'VIV49411', 'VIV49412']
@@ -184,8 +184,8 @@ RexpEZ = ['VIV49574', 'VIV49939', 'VIV49940', 'VIV49931', 'VIV49933', 'VIV49934'
 
 session = 1
 Ntrials = 28    #56       # 28
-stim_start = 7  #9  #18 #9
-split_start = 7 #9 #18        #9
+stim_start = 9  #9  #18 #9
+split_start = 9 #9 #18        #9
 stim_duration = 10  #10  #20      #8
 split_duration = 10 #10 #20         #8
 if any('split' in path for path in paths):
